@@ -39,7 +39,6 @@
 /* Exported macro ------------------------------------------------------------*/
 
 /* Exported functions --------------------------------------------------------*/ 
-uint8_t template_init(uint16_t peters);
 
 #ifdef __cplusplus
 }

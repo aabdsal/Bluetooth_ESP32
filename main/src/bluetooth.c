@@ -35,19 +35,5 @@
 /* Exported functions --------------------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 
-/******************************************************************************/
-/**
-    @brief  Bla, bla
-    @param  Bla, bla
-
-    @retval The number os pepes
-*/
-uint8_t template_init(uint16_t peters)
-{
-    static int8_t counter;
-        
-    return peters+1;
-}
-
 /* End of file ****************************************************************/
 
