@@ -17,6 +17,7 @@
 #include "host/ble_hs.h"
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
+#include "host/ble_gattc.h"
 #include "services/gap/ble_svc_gap.h"
 
 /* Private typedef -----------------------------------------------------------*/
@@ -116,7 +117,7 @@ static void ble_host_task(void *param)
 static int gap_event(struct ble_gap_event *event, void *arg)
 {
     (void)arg;
-    switch (event->type)
+    switch (event->type) // TODO: Ignorar el intento de conexion a otros deispositivos si el interruptor esta en Off
     {
         case BLE_GAP_EVENT_DISC:
         {
@@ -162,16 +163,25 @@ static int gap_event(struct ble_gap_event *event, void *arg)
                 ESP_LOGI(TAG, "Conectado al robot!");
 
                 // IMPORTANTE: ponemos handle fijo (simplificacion practica)
-                char_handle = 12;  // <-- este valor puede cambiar
+                char_handle = 12;  // WARNING: este valor puede cambiar 
             }
             
             else
             {
+                ble_gap_disc_cancel();
                 ESP_LOGI(TAG, "Fallo al conectar, reintentando...");
                 ble_app_on_sync();
             }
 
             return 0;
+        }
+        case BLE_GAP_EVENT_DISCONNECT:
+        {
+            ESP_LOGI(TAG, "Desconectado del robot, reintentando...");
+            conn_handle = 0;
+            char_handle = 0;
+            ble_app_on_sync();
+            break;
         }
 
         default:
@@ -197,8 +207,8 @@ static void ble_app_on_sync(void)
         .passive = 0
     };
 
-    ble_gap_disc(BLE_OWN_ADDR_PUBLIC, 0,
-                 &disc_params, gap_event, NULL);
+    ble_gap_disc(BLE_OWN_ADDR_PUBLIC, BLE_HS_FOREVER,
+                 &disc_params, gap_event, NULL); // BLE_HS_FOREVER per a que no pare mai, millor aixo que NULL o 0 que no se que pot fer
 }
 
 /* End of file ****************************************************************/
