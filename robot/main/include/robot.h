@@ -8,6 +8,9 @@
 
 /* Define to prevent recursive inclusion -------------------------------------*/
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
 #ifndef ROBOT_H
 #define ROBOT_H
 
@@ -41,6 +44,16 @@ typedef enum
     UNKNOWN,
 } robot_status_t;
 
+typedef enum
+{
+    FIJO,
+    PARPADEO,
+    APAGADO,
+} estado_led_t;
+
+extern estado_led_t estado_led;
+extern portMUX_TYPE led_mux;
+
 /* Exported constants --------------------------------------------------------*/
 /* Exported macro ------------------------------------------------------------*/
 /* Exported functions --------------------------------------------------------*/
@@ -63,7 +76,10 @@ void move_servo(robot_servo_t servo, robot_move_t move);
  * @param None
  * @return None
  */
-void check_interruptor_and_control_bluetooth(void);
+
+static void bluetooth_control_task(void *arg);
+
+static void led_pool_task(void *arg);
 
 #ifdef __cplusplus
 }

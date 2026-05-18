@@ -64,6 +64,9 @@ static uint16_t clamp_angle(int angle);
 static uint8_t servo_to_channel(robot_servo_t servo);
 static uint16_t angle_to_ticks(uint16_t angle);
 
+estado_led_t estado_led = APAGADO;
+portMUX_TYPE led_mux = portMUX_INITIALIZER_UNLOCKED;
+
 /* Private functions ---------------------------------------------------------*/
 
 /**
@@ -169,6 +172,9 @@ static void bluetooth_control_task(void *arg)
 
                 gpio_set_level(LED_PIN, 1);
                 gap_svc_start_advertising();
+                taskENTER_CRITICAL(&led_mux);
+                estado_led = PARPADEO;
+                portEXIT_CRITICAL(&led_mux);
             }
             else
             {
@@ -176,8 +182,40 @@ static void bluetooth_control_task(void *arg)
 
                 gpio_set_level(LED_PIN, 0);
                 gap_svc_stop_advertising();
+                taskENTER_CRITICAL(&led_mux);
+                estado_led = APAGADO;
+                portEXIT_CRITICAL(&led_mux);
             }
         }
+    }
+}
+
+static void led_pool_task(void *arg)
+{
+    const TickType_t xDelay = pdMS_TO_TICKS(500);
+
+    for(;;)
+    {
+        taskENTER_CRITICAL(&led_mux);
+        estado_led_t current_estado = estado_led;
+        taskEXIT_CRITICAL(&led_mux);
+
+        if (current_estado == PARPADEO)
+        {
+            gpio_set_level(LED_PIN, 1);
+            vTaskDelay(xDelay);
+            gpio_set_level(LED_PIN, 0);
+        }
+        else if (current_estado == FIJO)
+        {
+            gpio_set_level(LED_PIN, 1);
+        }
+        else // APAGADO
+        {
+            gpio_set_level(LED_PIN, 0);
+        }
+    
+        vTaskDelay(xDelay);
     }
 }
 
@@ -221,6 +259,9 @@ void robot_init(void)
     }
 
     gpio_set_level(LED_PIN, 0);
+    taskENTER_CRITICAL(&led_mux);
+    estado_led = APAGADO;
+    portEXIT_CRITICAL(&led_mux);
 
     /*
      * Instala servicio ISR.

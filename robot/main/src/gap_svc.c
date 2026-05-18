@@ -31,6 +31,7 @@
 
 #include "gap_svc.h"
 #include "gatt_svr.h"
+#include "robot.h"
 
 /* Private define ------------------------------------------------------------*/
 #define GAP_SVC_IO_CAP BLE_SM_IO_CAP_NO_IO
@@ -46,7 +47,6 @@ static bool s_ble_enabled = false;
 static bool s_ble_synced  = false;
 
 static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-
 static portMUX_TYPE ble_mux = portMUX_INITIALIZER_UNLOCKED;
 
 void ble_store_config_init(void);
@@ -184,6 +184,9 @@ static int gap_svc_gap_event(struct ble_gap_event *event, void *arg)
             if (event->connect.status == 0)
             {
                 s_conn_handle = event->connect.conn_handle;
+                taskENTER_CRITICAL(&led_mux);
+                estado_led = FIJO;
+                taskEXIT_CRITICAL(&led_mux);
 
                 rc = ble_gap_conn_find(event->connect.conn_handle, &desc);
 
@@ -208,6 +211,9 @@ static int gap_svc_gap_event(struct ble_gap_event *event, void *arg)
                 "disconnect; reason=%d\n",
                 event->disconnect.reason
             );
+            taskENTER_CRITICAL(&led_mux);
+            estado_led = PARPADEO;
+            taskEXIT_CRITICAL(&led_mux);
 
             s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
             if (gap_svc_get_enabled())
