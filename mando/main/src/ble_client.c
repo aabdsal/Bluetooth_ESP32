@@ -31,6 +31,13 @@ static char name_device[32] = "BLE_CLIENT";
 static uint16_t conn_handle = 0;
 static uint16_t char_handle = 0;
 
+//UUIDs del robot
+static const ble_uuid128_t robot_controller_uuid = 
+    BLE_UUID128_INIT(0xaa, 0xaa, 0xaa, 0x00, 0x00, 0x00, 0x00, 0x00, 0xCA, 0x00, 0x00, 0xea, 0x00, 0xea, 0x00, 0xea);
+
+static const ble_uuid128_t command_chr_uuid = 
+    BLE_UUID128_INIT(0xbb, 0xbb, 0xbb, 0xcc, 0xcc, 0xcc, 0xcc, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xea, 0x00, 0xea);
+
 /* Private function prototypes -----------------------------------------------*/
 
 static void ble_host_task(void *param);
@@ -108,6 +115,39 @@ static void ble_host_task(void *param)
 }
 
 /******************************************************************************/
+
+/**
+ * @brief Callback que se ejecuta cuando encuentra una característica
+ */
+static int chr_discovery_cb(uint16_t conn_handle, const struct ble_gatt_error *error, 
+                            const struct ble_gatt_chr *chr, void *arg) 
+{
+    if (error->status == 0) {
+        // Compara si el buzón encontrado es exactamente el de comandos
+        if (ble_uuid_cmp(&chr->uuid.u, &command_chr_uuid.u) == 0) {
+            char_handle = chr->val_handle; // ¡Guarda el número real asignado!
+            ESP_LOGI(TAG, "¡Característica de comando encontrada! Handle asignado: %d", char_handle);
+        }
+    }
+    return 0;
+}
+
+/**
+ * @brief Callback que se ejecuta cuando encuentra un servicio
+ */
+static int svc_discovery_cb(uint16_t conn_handle, const struct ble_gatt_error *error, 
+                            const struct ble_gatt_svc *svc, void *arg) 
+{
+    if (error->status == 0) {
+        // Compara si el servicio encontrado es el "Robot Control Service"
+        if (ble_uuid_cmp(&svc->uuid.u, &robot_controller_uuid.u) == 0) {
+            ESP_LOGI(TAG, "Servicio del robot encontrado. Buscando características...");
+            // Una vez hallado el servicio, pregunta por sus características
+            ble_gattc_disc_all_chrs(conn_handle, svc->start_handle, svc->end_handle, chr_discovery_cb, NULL);
+        }
+    }
+    return 0;
+}
 /**
  * @brief  Callback de eventos GAP.
  * @param  event Datos del evento GAP.
@@ -160,10 +200,9 @@ static int gap_event(struct ble_gap_event *event, void *arg)
             if (event->connect.status == 0)
             {
                 conn_handle = event->connect.conn_handle;
-                ESP_LOGI(TAG, "Conectado al robot!");
-
-                // IMPORTANTE: ponemos handle fijo (simplificacion practica)
-                char_handle = 12;  // WARNING: este valor puede cambiar 
+                ESP_LOGI(TAG, "Conectado al robot! Iniciando descubrimiento de servicios");
+                //EL ROBOT NOS LISTA SUS SERVICIOS
+                ble_gattc_disc_all_svcs(conn_handle, svc_discovery_cb, NULL);
             }
             
             else

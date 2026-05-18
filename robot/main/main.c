@@ -24,7 +24,7 @@ void app_main(void)
 {
     gap_svc_init();
     gatt_svr_init();
-    gap_svc_set_device_name("ESP32-S3 ROBOT");
+    gap_svc_set_device_name("ESP32S3_ROBOT");
     gap_svc_start();
     robot_init();
 }

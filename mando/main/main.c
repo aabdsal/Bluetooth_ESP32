@@ -91,7 +91,7 @@ void app_main(void)
         if (mando_btn_right_read())
         {
             char msg[6];
-            snprintf(msg, sizeof(msg), "S%d,A:%s", servo, "D");
+            snprintf(msg, sizeof(msg), "S%d,A:%s", servo, "H");
             ESP_LOGI(tag, "Boton right seleccionado");
             if (ble_enabled) ble_send(msg);
             else ESP_LOGW(tag, "Bluetooth desactivado, no se envia");
@@ -101,7 +101,7 @@ void app_main(void)
         if (mando_btn_left_read())
         {
             char msg[6];
-            snprintf(msg, sizeof(msg), "S%d,A:%s", servo, "I");
+            snprintf(msg, sizeof(msg), "S%d,A:%s", servo, "A");
             ESP_LOGI(tag, "Boton left seleccionado");
             if (ble_enabled) ble_send(msg);
             else ESP_LOGW(tag, "Bluetooth desactivado, no se envia");
