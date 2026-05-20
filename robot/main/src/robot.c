@@ -28,10 +28,10 @@
 
 static const char *tag = "[ROBOT]";
 
-static const gpio_num_t INTERRUPTOR_PIN = GPIO_NUM_36;
-static const gpio_num_t LED_PIN         = GPIO_NUM_3;
-static const gpio_num_t SDA_PIN         = GPIO_NUM_8;
-static const gpio_num_t SCL_PIN         = GPIO_NUM_10;
+static const gpio_num_t INTERRUPTOR_PIN = GPIO_NUM_36; // Posiblemente se ve fuera
+static const gpio_num_t LED_PIN         = GPIO_NUM_37;
+static const gpio_num_t SDA_PIN         = GPIO_NUM_35;
+static const gpio_num_t SCL_PIN         = GPIO_NUM_45;
 static const uint8_t PCA9685_ADDR = 0x40;
 
 #define PCA9685_SERVO_BASE_REG 0x06
@@ -42,6 +42,16 @@ static const uint8_t PCA9685_ADDR = 0x40;
 #define SERVO_MAX_ANGLE        180U
 #define SERVO_STEP             1U
 #define SERVO_COUNT            6U
+
+// Por problemas con el modulo i2c y los canales de los servos, se asignan manualmente los canales a cada servo
+// Canales de los 6 servos: 0x06, 0x0A, 0x0E, 0x12, 0x16, 0x1A
+
+#define SERVO1_CHANNEL 0X06
+#define SERVO2_CHANNEL 0X0A
+#define SERVO3_CHANNEL 0X0E
+#define SERVO4_CHANNEL 0X12
+#define SERVO5_CHANNEL 0X16
+#define SERVO6_CHANNEL 0X1A
 
 /* Private variables ---------------------------------------------------------*/
 
@@ -134,7 +144,16 @@ static uint8_t servo_to_channel(robot_servo_t servo) // Aqui le pasare una varia
         return 0xFF;
     }
 
-    return (uint8_t)servo; // Asumiendo que SERVO1=0, SERVO2=1, etc. y que el canal del PCA9685 para SERVO1 es 0, para SERVO2 es 1, etc.
+    switch (servo)
+    {
+        case SERVO1: return SERVO1_CHANNEL;
+        case SERVO2: return SERVO2_CHANNEL;
+        case SERVO3: return SERVO3_CHANNEL;
+        case SERVO4: return SERVO4_CHANNEL;
+        case SERVO5: return SERVO5_CHANNEL;
+        case SERVO6: return SERVO6_CHANNEL;
+        default: return 0xFF; // No debería llegar aquí por la validación inicial
+    }
 }
 
 /**
@@ -358,7 +377,7 @@ void move_servo(robot_servo_t servo, robot_move_t move)
     uint16_t off = ticks;
 
     uint8_t canal_servo[5];
-    canal_servo[0] = PCA9685_SERVO_BASE_REG + (4 * channel); // registro LEDn_ON_L
+    canal_servo[0] = channel; // Canal del servo en el PCA9685
     canal_servo[1] = on & 0xFF;
     canal_servo[2] = (on >> 8) & 0xFF;
     canal_servo[3] = off & 0xFF;

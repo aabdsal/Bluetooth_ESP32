@@ -27,7 +27,7 @@
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
 
-static const char *tag = "[MANDO]";
+// static const char *tag = "[MANDO]";
 
 /* Private function prototypes -----------------------------------------------*/
 /* Exported functions --------------------------------------------------------*/
