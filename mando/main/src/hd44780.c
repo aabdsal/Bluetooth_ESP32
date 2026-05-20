@@ -140,11 +140,34 @@ static void LCD_writeNibble(uint8_t nibble, uint8_t mode)
 {
     uint8_t data = (nibble & 0xF0) | mode | LCD_BACKLIGHT;
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    ESP_ERROR_CHECK(i2c_master_start(cmd));
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (LCD_addr << 1) | I2C_MASTER_WRITE, 1));
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, data, 1));
-    ESP_ERROR_CHECK(i2c_master_stop(cmd));
-    ESP_ERROR_CHECK(i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000/portTICK_PERIOD_MS));
+
+    esp_err_t ret;
+
+    ret = (i2c_master_start(cmd));
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE("LCD_DISPLAY", "i2c_master_start(cmd) fallo");
+    }
+    ret = (i2c_master_write_byte(cmd, (LCD_addr << 1) | I2C_MASTER_WRITE, 1));
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE("LCD_DISPLAY", "i2c_master_write_byte(cmd, (LCD_addr << 1) | I2C_MASTER_WRITE, 1) fallo");
+    }
+    ret = (i2c_master_write_byte(cmd, data, 1));
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE("LCD_DISPLAY", "i2c_master_write_byte(cmd, data, 1) fallo");
+    }
+    ret = (i2c_master_stop(cmd));
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE("LCD_DISPLAY", "i2c_master_stop(cmd) fallo");
+    }
+    ret = (i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000/portTICK_PERIOD_MS));
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE("LCD_DISPLAY", "i2c_master_cmd_begin(cmd) fallo");
+    }
     i2c_cmd_link_delete(cmd);   
 
     LCD_pulseEnable(data);                                              // Clock data into LCD

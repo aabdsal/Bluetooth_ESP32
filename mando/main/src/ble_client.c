@@ -276,6 +276,7 @@ static void ble_client_scanning_task(void *pvParameters)
         {
             ble_app_on_sync();
         }
+        vTaskDelay(pdMS_TO_TICKS(300));
     }
 }
 
