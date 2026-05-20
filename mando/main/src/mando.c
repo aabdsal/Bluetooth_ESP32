@@ -39,6 +39,7 @@ static portMUX_TYPE btn_right_spinlock = portMUX_INITIALIZER_UNLOCKED;
 static portMUX_TYPE btn_left_spinlock = portMUX_INITIALIZER_UNLOCKED;
 static portMUX_TYPE sw_ble_en_spinlock = portMUX_INITIALIZER_UNLOCKED;
 
+
 /* Private function prototypes -----------------------------------------------*/
 
 static void btn_select_handler_isr(void *arg);
@@ -48,6 +49,7 @@ static void btn_left_handler_isr(void *arg);
 static void sw_ble_en_handler_isr(void *arg);
 
 /* Exported functions --------------------------------------------------------*/
+
 
 void mando_init(void)
 {
@@ -144,12 +146,6 @@ bool mando_sw_ble_en_event_read(void)
     taskEXIT_CRITICAL(&sw_ble_en_spinlock);
 
     return sw_event;
-}
-
-bool mando_sw_ble_en_state(void)
-{
-    /* Devuelve true si esta conectado a tierra (nivel bajo) = encendido, falso si esta a nivel alto (pull-up) */
-    return (gpio_get_level(SW_BLE_EN) == 0);
 }
 
 /* Private functions ---------------------------------------------------------*/

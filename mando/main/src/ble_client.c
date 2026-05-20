@@ -17,9 +17,11 @@
 #include "host/ble_hs.h"
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
-//#include "host/ble_gattc.h"
 #include "services/gap/ble_svc_gap.h"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "mando.h"
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
 /* Private macro -------------------------------------------------------------*/
@@ -43,9 +45,9 @@ static const ble_uuid128_t command_chr_uuid =
 static void ble_host_task(void *param);
 static int gap_event(struct ble_gap_event *event, void *arg);
 static void ble_app_on_sync(void);
+static void ble_client_scanning_task(void *pvParameters);
 
 /* Exported functions --------------------------------------------------------*/
-
 
 void ble_client_set_device_name(const char *name)
 {
@@ -76,6 +78,7 @@ void ble_client_init(void)
     ble_hs_cfg.sync_cb = ble_app_on_sync;
 
     nimble_port_freertos_init(ble_host_task);
+    xTaskCreate(ble_client_scanning_task, "ble_client_scanning_task", 4095, NULL, 5, NULL);
 }
 
 void ble_send(char *msg)
@@ -236,7 +239,7 @@ static int gap_event(struct ble_gap_event *event, void *arg)
  */
 static void ble_app_on_sync(void)
 {
-    ESP_LOGI(TAG, "Escaneando BLE...");
+    ESP_LOGI(TAG, "Activando el escaneo BLE...");
 
     struct ble_gap_disc_params disc_params = 
     {
@@ -246,8 +249,34 @@ static void ble_app_on_sync(void)
         .passive = 0
     };
 
-    ble_gap_disc(BLE_OWN_ADDR_PUBLIC, BLE_HS_FOREVER,
-                 &disc_params, gap_event, NULL); // BLE_HS_FOREVER per a que no pare mai, millor aixo que NULL o 0 que no se que pot fer
+    ble_gap_disc(BLE_OWN_ADDR_PUBLIC, BLE_HS_FOREVER, &disc_params, gap_event, NULL); 
+    // BLE_HS_FOREVER per a que no pare mai, millor aixo que NULL o 0 que no se que pot fer
+}
+
+/******************************************************************************/
+/**
+ * @brief  Activa/Desactiva el escaneo en base al interruptor
+ * @param  None
+ * @retval None
+ */
+static void ble_client_scanning_task(void *pvParameters)
+{
+    bool esta_desconectado = false;
+
+    for(;;)
+    {
+        bool sw_event = mando_sw_ble_en_event_read();
+
+        if (sw_event && (!esta_desconectado))
+        {
+            ble_gap_disc_cancel();
+            esta_desconectado = true;
+        }
+        else if(esta_desconectado)
+        {
+            ble_app_on_sync();
+        }
+    }
 }
 
 /* End of file ****************************************************************/
