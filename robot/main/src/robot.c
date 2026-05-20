@@ -28,10 +28,11 @@
 
 static const char *tag = "[ROBOT]";
 
-static const gpio_num_t INTERRUPTOR_PIN = GPIO_NUM_4;
+static const gpio_num_t INTERRUPTOR_PIN = GPIO_NUM_36;
 static const gpio_num_t LED_PIN         = GPIO_NUM_3;
-// static const gpio_num_t SDA_PIN         = GPIO_NUM_8;
-// static const gpio_num_t SCL_PIN         = GPIO_NUM_10;
+static const gpio_num_t SDA_PIN         = GPIO_NUM_8;
+static const gpio_num_t SCL_PIN         = GPIO_NUM_10;
+static const uint8_t PCA9685_ADDR = 0x40;
 
 #define PCA9685_SERVO_BASE_REG 0x06
 #define PCA9685_PWM_PERIOD_US  20000U
@@ -44,21 +45,18 @@ static const gpio_num_t LED_PIN         = GPIO_NUM_3;
 
 /* Private variables ---------------------------------------------------------*/
 
-/*
- * La ESP32 manda comandos al PCA9685.
- * El PCA9685 ya está diseñado para ser slave I2C.
- * Por eso la ESP32 debe ir en modo master y escribir registros del PCA9685.
- */
-i2c_master_dev_handle_t dev_handle;
-
 static uint16_t servo_angle[SERVO_COUNT] = {90, 90, 90, 90, 90, 90};
-static uint8_t canal_servo[] = {PCA9685_SERVO_BASE_REG, 0x00, 0x00, 0x00, 0x00};
 
 static TaskHandle_t bluetooth_control_task_handle = NULL;
+static TaskHandle_t led_pool_task_handle = NULL;
+
+static i2c_master_bus_handle_t i2c_bus = NULL;
+static i2c_master_dev_handle_t dev_handle = NULL;
 
 /* Private function prototypes ----------------------------------------------*/
 static void gpio_handler_isr(void *arg);
 static void bluetooth_control_task(void *arg);
+static void led_pool_task(void *arg);
 
 static uint16_t clamp_angle(int angle);
 static uint8_t servo_to_channel(robot_servo_t servo);
@@ -68,6 +66,41 @@ estado_led_t estado_led = APAGADO;
 portMUX_TYPE led_mux = portMUX_INITIALIZER_UNLOCKED;
 
 /* Private functions ---------------------------------------------------------*/
+
+static void i2c_init(void)
+{
+    i2c_master_bus_config_t bus_cfg = {
+        .i2c_port = I2C_NUM_0,
+        .sda_io_num = SDA_PIN,
+        .scl_io_num = SCL_PIN,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .flags.enable_internal_pullup = true,
+    };
+    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &i2c_bus));
+
+    i2c_device_config_t dev_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = PCA9685_ADDR,
+        .scl_speed_hz = 100000,
+    };
+    ESP_ERROR_CHECK(i2c_master_bus_add_device(i2c_bus, &dev_cfg, &dev_handle));
+}
+
+static void write_reg(uint8_t reg, uint8_t val)
+{
+    uint8_t data[2] = {reg, val};
+    ESP_ERROR_CHECK(i2c_master_transmit(dev_handle, data, 2, pdMS_TO_TICKS(100)));
+}
+
+static void pca9685_init(void)
+{
+    // Entrar en modo sleep para configurar prescale
+    write_reg(0x00, 0x10);               // MODE1, SLEEP bit
+    write_reg(0xFE, 121);                // PRESCALE = 121 → 50 Hz
+    write_reg(0x00, 0x20);               // MODE1, AI bit (auto-increment)
+    vTaskDelay(pdMS_TO_TICKS(5));
+    write_reg(0x00, 0x20 | 0x80);        // MODE1, AI + RESTART
+}
 
 /**
  * @brief Limita el angulo de un servo al rango soportado
@@ -94,14 +127,14 @@ static uint16_t clamp_angle(int angle)
  * @param servo Identificador del servo
  * @return Indice del canal, o 0xFF si el servo no es valido
  */
-static uint8_t servo_to_channel(robot_servo_t servo)
+static uint8_t servo_to_channel(robot_servo_t servo) // Aqui le pasare una variable tipo enum donde SERVO1=0, SERVO2=1, etc. y me devolvera el canal del PCA9685 al que corresponde ese servo
 {
     if (servo < SERVO1 || servo > SERVO6)
     {
         return 0xFF;
     }
 
-    return (uint8_t)servo;
+    return (uint8_t)servo; // Asumiendo que SERVO1=0, SERVO2=1, etc. y que el canal del PCA9685 para SERVO1 es 0, para SERVO2 es 1, etc.
 }
 
 /**
@@ -154,7 +187,6 @@ static void IRAM_ATTR gpio_handler_isr(void *arg)
 static void bluetooth_control_task(void *arg)
 {
     int last_applied_state = -1;
-
     for(;;)
     {
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(250));
@@ -166,7 +198,7 @@ static void bluetooth_control_task(void *arg)
         {
             last_applied_state = current_state;
 
-            if (current_state == 1)
+            if (current_state == 0)
             {
                 ESP_LOGI(tag, "Interruptor ON -> activar BLE advertising");
 
@@ -263,10 +295,6 @@ void robot_init(void)
     estado_led = APAGADO;
     portEXIT_CRITICAL(&led_mux);
 
-    /*
-     * Instala servicio ISR.
-     * Si ya estaba instalado en otro modulo, ESP_ERR_INVALID_STATE no es critico.
-     */
     esp_err_t err = gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
 
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE)
@@ -282,6 +310,10 @@ void robot_init(void)
         ESP_LOGE(tag, "gpio_isr_handler_add() fallo: %s", esp_err_to_name(ret));
     }
 
+    i2c_init();
+    pca9685_init();
+    ESP_LOGI(tag, "Robot inicializado correctamente");
+
     xTaskCreate(
         bluetooth_control_task,
         "ble_ctrl_task",
@@ -291,125 +323,55 @@ void robot_init(void)
         &bluetooth_control_task_handle
     );
 
-    /*
-    // Configura la comunicacion del bus Inter-Integrated Circuit 
-    i2c_master_bus_config_t bus_cfg = 
-    {
-        .i2c_port = I2C_NUM_0,                  // Puerto I2C, -1 para autodeteccion
-        .sda_io_num = SDA_PIN,                  
-        .scl_io_num = SCL_PIN,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,                 // Ajusta el filtrado de ruido en la senal
-        .flags.allow_pd = false,
-        .flags.enable_internal_pullup = true, 
-    };
-
-    i2c_master_bus_handle_t bus_handle;
-
-    // Configura el dispositivo concreto con el que va a hablar la ESP32
-    i2c_device_config_t dev_cfg = 
-    {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = 0x40, // Direccion del modulo PCA9685 
-        .scl_speed_hz = 100000,
-    };
-
-
-    ret = i2c_new_master_bus(&bus_cfg, &bus_handle);
-    if (ret != ESP_OK) 
-    {
-        ESP_LOGE(tag, "i2c_new_master_bus() fallo: %s", esp_err_to_name(ret));
-    }
-    ret = i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle);
-    if (ret != ESP_OK) 
-    {
-        ESP_LOGE(tag, "i2c_master_bus_add_device() fallo: %s", esp_err_to_name(ret));
-    }
-    const uint8_t mode_one_on[] = {0x00, 0x10}; // MODE1 con SLEEP = 1
-    size_t size_data_wr = sizeof(mode_one_on);
-
-    ret = i2c_master_transmit(dev_handle, mode_one_on, size_data_wr, -1);   
-    if (ret != ESP_OK) 
-    {
-        ESP_LOGE(tag, "i2c_master_transmit(mode_one_on) fallo: %s", esp_err_to_name(ret));
-    }
-    const uint8_t prescale[] = {0xFE, 121}; // PRE_SCALE = 121 (50 Hz) 
-    ret = i2c_master_transmit(dev_handle, prescale, sizeof(prescale), -1);
-    if (ret != ESP_OK) 
-    {
-        ESP_LOGE(tag, "i2c_master_transmit(prescale) fallo: %s", esp_err_to_name(ret));
-    }
-    const uint8_t mode_one_off[] = {0x00, 0x00}; // Volver a MODE1 con SLEEP = 0 
-    ret = i2c_master_transmit(dev_handle, mode_one_off, sizeof(mode_one_off), -1);
-    if (ret != ESP_OK) 
-    {
-        ESP_LOGE(tag, "i2c_master_transmit(mode_one_off) fallo: %s", esp_err_to_name(ret));
-    }
-    const uint8_t restart[] = {0x00, 0x80}; // Reinicio 
-    ret = i2c_master_transmit(dev_handle, restart, sizeof(restart), -1);
-    if (ret != ESP_OK) 
-    {
-        ESP_LOGE(tag, "i2c_master_transmit(restart) fallo: %s", esp_err_to_name(ret));
-    }
-    */
+        xTaskCreate(
+        led_pool_task,
+        "led_pool_task",
+        4096,
+        NULL,
+        5,
+        &led_pool_task_handle
+    );
 }
 
 void move_servo(robot_servo_t servo, robot_move_t move)
 {
     uint8_t channel = servo_to_channel(servo);
-
-    if (channel == 0xFF)
-    {
-        ESP_LOGE(tag, "Servo no valido");
+    if (channel == 0xFF) {
+        ESP_LOGE(tag, "Servo no válido");
         return;
     }
 
     int new_angle = servo_angle[channel];
-
     if (move == HORARIO)
-    {
         new_angle += SERVO_STEP;
-    }
     else if (move == ANTIHORARIO)
-    {
         new_angle -= SERVO_STEP;
-    }
-    else
-    {
-        ESP_LOGE(tag, "Movimiento no valido");
+    else {
+        ESP_LOGE(tag, "Movimiento no válido");
         return;
     }
 
     servo_angle[channel] = clamp_angle(new_angle);
-
     uint16_t ticks = angle_to_ticks(servo_angle[channel]);
 
     uint16_t on = 0;
     uint16_t off = ticks;
 
-    canal_servo[0] = PCA9685_SERVO_BASE_REG + (4 * channel);
+    uint8_t canal_servo[5];
+    canal_servo[0] = PCA9685_SERVO_BASE_REG + (4 * channel); // registro LEDn_ON_L
     canal_servo[1] = on & 0xFF;
     canal_servo[2] = (on >> 8) & 0xFF;
     canal_servo[3] = off & 0xFF;
     canal_servo[4] = (off >> 8) & 0xFF;
 
-    /*
-     * Aqui iria tu escritura I2C al PCA9685 si ya la tenias implementada.
-     *   esp_err_t ret;
-     *   ret = i2c_master_transmit(dev_handle, canal_servo, sizeof(canal_servo), -1);
-     *   if (ret != ESP_OK) 
-     *   {
-     *       ESP_LOGE(tag, "i2c_master_transmit(canal_servo) fallo: %s", esp_err_to_name(ret));
-     *   }
-     */
+    // Transmisión I2C al PCA9685
+    esp_err_t ret = i2c_master_transmit(dev_handle, canal_servo, 5, pdMS_TO_TICKS(100));
+    if (ret != ESP_OK) {
+        ESP_LOGE(tag, "Fallo al enviar datos al servo %d: %s", channel + 1, esp_err_to_name(ret));
+        return;
+    }
 
-    ESP_LOGI(
-        tag,
-        "Servo %u movido a %u grados, ticks=%u",
-        channel + 1,
-        servo_angle[channel],
-        ticks
-    );
+    ESP_LOGI(tag, "Servo %d -> ángulo %d°, ticks=%u", channel + 1, servo_angle[channel], ticks);
 }
 
 /* End of file ***************************************************************/

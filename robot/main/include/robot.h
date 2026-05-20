@@ -34,6 +34,7 @@ typedef enum
 {
     HORARIO,
     ANTIHORARIO,
+    OK,
     ERROR,
 } robot_move_t;
 
@@ -70,16 +71,6 @@ void robot_init(void);
  * @param move Direccion del movimiento
  */
 void move_servo(robot_servo_t servo, robot_move_t move);
-
-/**
- * @brief Lee el estado del interruptor, y enciende o apaga el bluetooth del robot en consecuencia
- * @param None
- * @return None
- */
-
-static void bluetooth_control_task(void *arg);
-
-static void led_pool_task(void *arg);
 
 #ifdef __cplusplus
 }

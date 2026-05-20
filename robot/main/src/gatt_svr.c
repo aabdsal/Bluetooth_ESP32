@@ -37,9 +37,6 @@ static robot_servo_t servo_val;
 static robot_move_t move_val;
 static robot_status_t status_val;
 
-static bool servo_selected;
-static bool move_selected;
-
 static const ble_uuid128_t robot_controller_uuid = 
 BLE_UUID128_INIT(0xaa, 0xaa, 0xaa, 0x00, 0x00, 0x00, 0x00, 0x00,0xCA, 0x00, 0x00, 0xea, 0x00, 0xea, 0x00, 0xea);
 
@@ -61,70 +58,27 @@ static uint8_t gatt_svr_dsc_val; /* A custom descriptor */
  * @param len Longitud del mensaje en bytes
  * @return 0 si tiene exito, -1 si el mensaje no se reconoce
  */
-static int handle_message(const char *msg, uint16_t len)
+
+static int handle_message(const char *msg, uint16_t len, char *traducido)
 {
-    bool updated = false;
-
-    if (strcmp(msg, "H") == 0 || strstr(msg, "H") != NULL)
+    if (msg == NULL)
     {
-        move_val = HORARIO;
-        move_selected = true;
-        updated = true; // Saber si el mensaje coincide al menos con algun comando valido
-    }
-    else if (strcmp(msg, "A") == 0 || strstr(msg, "A") != NULL)
-    {
-        move_val = ANTIHORARIO;
-        move_selected = true;
-        updated = true;
+        return -1;
     }
 
-    if (servo_selected && move_selected)
+    char traduccion[len + 1];
+    memset(traduccion, 0, sizeof(traduccion));
+    for (uint16_t idx = 0; idx < len; idx++)
     {
-        move_servo(servo_val, move_val);
+        traduccion[idx] = (char)msg[idx];
     }
+    strcpy(traducido, traduccion);
 
-    if (strstr(msg, "S1") != NULL)
-    {
-        servo_val = SERVO1;
-        servo_selected = true;
-        updated = true;
-    }
-    else if (strstr(msg, "S2") != NULL)
-    {
-        servo_val = SERVO2;
-        servo_selected = true;
-        updated = true;
-    }
-    else if (strstr(msg, "S3") != NULL)
-    {
-        servo_val = SERVO3;
-        servo_selected = true;
-        updated = true;
-    }
-    else if (strstr(msg, "S4") != NULL)
-    {
-        servo_val = SERVO4;
-        servo_selected = true;
-        updated = true;
-    }
-    else if (strstr(msg, "S5") != NULL)
-    {
-        servo_val = SERVO5;
-        servo_selected = true;
-        updated = true;
-    }
-    else if (strstr(msg, "S6") != NULL)
-    {
-        servo_val = SERVO6;
-        servo_selected = true;
-        updated = true;
-    }
+    traducido[len] = '\0';
 
-    if (!updated)
+    if (strlen(traducido) != len)
     {
-        ESP_LOGW(gatt, "Mensaje desconocido: %s", msg);
-        servo_val = ERROR_SERVO;
-        return -1; // Error: mensaje desconocido
+        return -1;
     }
 
     return 0;
@@ -136,14 +90,50 @@ static int handle_message(const char *msg, uint16_t len)
  * @param len Longitud del comando
  * @return 0 si tiene exito, -1 si falla el analisis o la validacion
  */
-static int handle_robot_message(const char *msg, uint16_t len)
+static int handle_robot_message(const uint8_t *msg, uint16_t len, robot_servo_t *servo, robot_move_t *move)
 {
-    int rc = handle_message(msg, len);
+    char traducido[len + 1];
+    memset(traducido, 0, sizeof(traducido));
+    int rc = handle_message((const char *)msg, len, traducido);
     if (rc != 0)
     {
         ESP_LOGE(gatt, "Error manejando el mensaje: %s", msg);
         return -1; // Error al manejar el mensaje
     }
+
+    int servo_num;
+    char mov_char;
+    if (sscanf(traducido, "S%d,A:%c", &servo_num, &mov_char) == 2) {
+        if (servo_num >= 1 && servo_num <= 6) {
+            *servo = (robot_servo_t)(servo_num - 1); // Porque en nuestro enum SERVO1=0, SERVO2=1, etc.
+            ESP_LOGI(robot, "Servo seleccionado: %d", *servo);
+        } else {
+            ESP_LOGE(gatt, "Número de servo inválido: %d", servo_num);
+            return -1;
+        }
+
+        switch (mov_char) {
+            case 'H':
+                *move = HORARIO;
+                ESP_LOGI(robot, "Movimiento HORARIO");
+                break;
+            case 'A':
+                *move = ANTIHORARIO;
+                ESP_LOGI(robot, "Movimiento ANTIHORARIO");
+                break;
+            case 'O':
+                *move = OK;
+                ESP_LOGI(robot, "Movimiento OK (confirmación)");
+                break;
+            default:
+                ESP_LOGE(gatt, "Movimiento no reconocido: %c", mov_char);
+                return -1;
+        }
+    } else {
+        ESP_LOGE(gatt, "Formato de mensaje incorrecto: %s", traducido);
+        return -1;
+    }
+
     return 0; // Mensaje manejado exitosamente
 }
 
@@ -213,7 +203,10 @@ static int gatt_svc_access(uint16_t conn_handle, uint16_t attr_handle,
     int rc;
     uint8_t mensaje[20];
     uint16_t len;
-    
+    robot_servo_t servo;
+    robot_move_t move;
+
+
     switch (ctxt->op) 
     {
         case BLE_GATT_ACCESS_OP_WRITE_CHR:
@@ -225,33 +218,29 @@ static int gatt_svc_access(uint16_t conn_handle, uint16_t attr_handle,
                 ESP_LOGE(gatt, "Error decodificando el mensaje, rc=%d", rc);                
                 return BLE_ATT_ERR_UNLIKELY;            
             }
-
-            char traducido[21];
-            for(int idx = 0; idx < len; idx++)
-            {
-                traducido[idx] = (char)mensaje[idx];
-            }
-            traducido[len] = '\0';
             
-            rc = handle_robot_message(traducido, len);
+            rc = handle_robot_message(mensaje, len, &servo, &move);
             if (rc != 0)            
             {                
                 ESP_LOGE(gatt, "Error decodificando el mensaje, rc=%d", rc);                
                 return BLE_ATT_ERR_UNLIKELY;            
             }
-
-            if (strcmp(traducido, "H") == 0)
-            {
-                move_servo(servo_val, HORARIO);
-                ESP_LOGI(robot, "Giro horario");
+            if (move != OK && servo_val != ERROR_SERVO) {
+                move_val = move;
+                move_servo(servo_val, move_val);
+                ESP_LOGI(robot, "Movimiento ejecutado: servo %d, movimiento %d", servo_val, move_val);
             }
-            else if (strcmp(traducido, "A") == 0)
+            else if (move == OK)
             {
-                move_servo(servo_val, ANTIHORARIO);
-                ESP_LOGI(robot, "Giro antihorario");
+                servo_val = servo;
+                ESP_LOGI(robot, "Servo seleccionado: %d", servo_val);
+            }
+            else {
+                ESP_LOGE(gatt, "Servo no seleccionado aun");
+                return BLE_ATT_ERR_UNLIKELY;
             }
             
-            ESP_LOGI(robot, "Mensaje: %s", traducido);
+            ESP_LOGI(robot, "Mensaje: %s", mensaje);
             /*rc = ble_gatts_notify(conn_handle, status_val);
             if (rc != 0)
             {
