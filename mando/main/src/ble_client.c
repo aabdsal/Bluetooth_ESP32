@@ -17,7 +17,7 @@
 #include "host/ble_hs.h"
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
-#include "host/ble_gattc.h"
+//#include "host/ble_gattc.h"
 #include "services/gap/ble_svc_gap.h"
 
 /* Private typedef -----------------------------------------------------------*/
@@ -220,7 +220,7 @@ static int gap_event(struct ble_gap_event *event, void *arg)
             conn_handle = 0;
             char_handle = 0;
             ble_app_on_sync();
-            break;
+            return 0;
         }
 
         default:

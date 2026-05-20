@@ -90,7 +90,7 @@ void app_main(void)
 
         if (mando_btn_right_read())
         {
-            char msg[6];
+            char msg[16];
             snprintf(msg, sizeof(msg), "S%d,A:%s", servo, "H");
             ESP_LOGI(tag, "Boton right seleccionado");
             if (ble_enabled) ble_send(msg);
@@ -100,7 +100,7 @@ void app_main(void)
         
         if (mando_btn_left_read())
         {
-            char msg[6];
+            char msg[16];
             snprintf(msg, sizeof(msg), "S%d,A:%s", servo, "A");
             ESP_LOGI(tag, "Boton left seleccionado");
             if (ble_enabled) ble_send(msg);
@@ -111,7 +111,7 @@ void app_main(void)
         
         if (mando_btn_ok_read())
         {
-            char msg[6];
+            char msg[16];
             snprintf(msg, sizeof(msg), "S%d,A:%s", servo, "O");
             ESP_LOGI(tag, "Boton ok seleccionado");
             if (ble_enabled) ble_send(msg);
