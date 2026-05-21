@@ -46,6 +46,36 @@ void ble_send(char *msg);
  */
 void ble_client_set_device_name(const char *name);
 
+/******************************************************************************/
+/**
+ * @brief  Indica si el cliente BLE está actualmente escaneando dispositivos.
+ * @retval true si está escaneando, false en caso contrario.
+ */
+bool ble_client_is_scanning();
+
+/******************************************************************************/
+/**
+ * @brief  Activa o desactiva el escaneo de dispositivos BLE.
+ * @param  scan true para iniciar el escaneo, false para detenerlo.
+ * @retval None
+ */
+void ble_client_set_scanning(bool scan);
+
+/******************************************************************************/
+/**
+ * @brief  Indica si el cliente BLE está actualmente conectado a un dispositivo.
+ * @retval true si está conectado, false en caso contrario.
+ */
+bool ble_client_is_connected();
+
+/******************************************************************************/
+/**
+ * @brief  Establece o elimina el estado de conexión BLE del cliente.
+ * @param  connect true para marcar como conectado, false para desconectado.
+ * @retval None
+ */
+void ble_client_set_connection(bool connect);
+
 #ifdef __cplusplus
 }
 #endif

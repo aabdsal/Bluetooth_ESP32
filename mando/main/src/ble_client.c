@@ -7,9 +7,7 @@
  */
 
 /* Includes ------------------------------------------------------------------*/
-
 #include <string.h>
-#include "ble_client.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "nimble/nimble_port.h"
@@ -18,17 +16,21 @@
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
 #include "services/gap/ble_svc_gap.h"
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
+#include "ble_client.h"
 #include "mando.h"
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
 
-static const char *TAG = "BLE_CLIENT";
-static char name_device[32] = "BLE_CLIENT";
+bool scanning = false;
+bool connected = false;
+
+static const char *TAG = "[BLE_CLIENT]";
+static char name_device[32] = "";
 
 static uint16_t conn_handle = 0;
 static uint16_t char_handle = 0;
@@ -55,7 +57,6 @@ void ble_client_set_device_name(const char *name)
     name_device[sizeof(name_device) - 1] = '\0';
 }
 
-
 void ble_client_init(void)
 {
 
@@ -75,10 +76,18 @@ void ble_client_init(void)
         ESP_LOGE(TAG, "ble_svc_gap_device_name_set fallo, rc=%d", rc);
     }
     
-    ble_hs_cfg.sync_cb = ble_app_on_sync;
+    //ble_hs_cfg.sync_cb = ble_app_on_sync;
 
     nimble_port_freertos_init(ble_host_task);
-    xTaskCreate(ble_client_scanning_task, "ble_client_scanning_task", 4095, NULL, 5, NULL);
+
+    xTaskCreate(
+        ble_client_scanning_task, 
+        "ble_client_scanning_task", 
+        4095, 
+        NULL, 
+        5, 
+        NULL
+    );
 }
 
 void ble_send(char *msg)
@@ -102,6 +111,26 @@ void ble_send(char *msg)
     
 }
 
+bool ble_client_is_scanning()
+{
+    return scanning;
+}
+
+void ble_client_set_scanning(bool scan)
+{
+    scanning = scan;
+}
+
+bool ble_client_is_connected()
+{
+    return connected;
+}
+
+void ble_client_set_connection(bool connect)
+{
+    connected = connect;
+}
+
 /* Private functions ---------------------------------------------------------*/
 
 /******************************************************************************/
@@ -117,17 +146,28 @@ static void ble_host_task(void *param)
     nimble_port_freertos_deinit();
 }
 
-/******************************************************************************/
 
+/******************************************************************************/
 /**
- * @brief Callback que se ejecuta cuando encuentra una característica
+ * @brief Callback que se ejecuta durante el descubrimiento de características GATT.
+ *
+ * Comprueba si la característica encontrada corresponde a la UUID de comandos.
+ * Si es así, guarda el handle de la característica para futuros envíos de datos.
+ *
+ * @param conn_handle   Handle de la conexión BLE.
+ * @param error         Puntero a la estructura de error del descubrimiento.
+ * @param chr           Puntero a la estructura de la característica encontrada.
+ * @param arg           Argumento de usuario (no usado).
+ * @retval 0 Siempre devuelve 0.
  */
 static int chr_discovery_cb(uint16_t conn_handle, const struct ble_gatt_error *error, 
                             const struct ble_gatt_chr *chr, void *arg) 
 {
-    if (error->status == 0) {
+    if (error->status == 0) 
+    {
         // Compara si el buzón encontrado es exactamente el de comandos
-        if (ble_uuid_cmp(&chr->uuid.u, &command_chr_uuid.u) == 0) {
+        if (ble_uuid_cmp(&chr->uuid.u, &command_chr_uuid.u) == 0) 
+        {
             char_handle = chr->val_handle; // ¡Guarda el número real asignado!
             ESP_LOGI(TAG, "¡Característica de comando encontrada! Handle asignado: %d", char_handle);
         }
@@ -135,15 +175,28 @@ static int chr_discovery_cb(uint16_t conn_handle, const struct ble_gatt_error *e
     return 0;
 }
 
+
+/******************************************************************************/
 /**
- * @brief Callback que se ejecuta cuando encuentra un servicio
+ * @brief Callback que se ejecuta durante el descubrimiento de servicios GATT.
+ *
+ * Comprueba si el servicio encontrado corresponde al servicio de control del robot.
+ * Si es así, inicia el descubrimiento de sus características.
+ *
+ * @param conn_handle   Handle de la conexión BLE.
+ * @param error         Puntero a la estructura de error del descubrimiento.
+ * @param svc           Puntero a la estructura del servicio encontrado.
+ * @param arg           Argumento de usuario (no usado).
+ * @retval 0 Siempre devuelve 0.
  */
 static int svc_discovery_cb(uint16_t conn_handle, const struct ble_gatt_error *error, 
                             const struct ble_gatt_svc *svc, void *arg) 
 {
-    if (error->status == 0) {
+    if (error->status == 0) 
+    {
         // Compara si el servicio encontrado es el "Robot Control Service"
-        if (ble_uuid_cmp(&svc->uuid.u, &robot_controller_uuid.u) == 0) {
+        if (ble_uuid_cmp(&svc->uuid.u, &robot_controller_uuid.u) == 0) 
+        {
             ESP_LOGI(TAG, "Servicio del robot encontrado. Buscando características...");
             // Una vez hallado el servicio, pregunta por sus características
             ble_gattc_disc_all_chrs(conn_handle, svc->start_handle, svc->end_handle, chr_discovery_cb, NULL);
@@ -151,6 +204,8 @@ static int svc_discovery_cb(uint16_t conn_handle, const struct ble_gatt_error *e
     }
     return 0;
 }
+
+/******************************************************************************/
 /**
  * @brief  Callback de eventos GAP.
  * @param  event Datos del evento GAP.
@@ -159,7 +214,7 @@ static int svc_discovery_cb(uint16_t conn_handle, const struct ble_gatt_error *e
  */
 static int gap_event(struct ble_gap_event *event, void *arg)
 {
-    (void)arg;
+    
     switch (event->type) // TODO: Ignorar el intento de conexion a otros deispositivos si el interruptor esta en Off
     {
         case BLE_GAP_EVENT_DISC:
@@ -204,10 +259,12 @@ static int gap_event(struct ble_gap_event *event, void *arg)
             {
                 conn_handle = event->connect.conn_handle;
                 ESP_LOGI(TAG, "Conectado al robot! Iniciando descubrimiento de servicios");
+                
+                ble_client_set_connection(true);
+
                 //EL ROBOT NOS LISTA SUS SERVICIOS
                 ble_gattc_disc_all_svcs(conn_handle, svc_discovery_cb, NULL);
             }
-            
             else
             {
                 ble_gap_disc_cancel();
@@ -220,6 +277,7 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         case BLE_GAP_EVENT_DISCONNECT:
         {
             ESP_LOGI(TAG, "Desconectado del robot, reintentando...");
+            ble_client_set_connection(false);
             conn_handle = 0;
             char_handle = 0;
             ble_app_on_sync();
@@ -261,21 +319,30 @@ static void ble_app_on_sync(void)
  */
 static void ble_client_scanning_task(void *pvParameters)
 {
-    bool esta_desconectado = false;
-
+    bool prev = false;
+    bool scanning_state = false;
     for(;;)
     {
-        bool sw_event = mando_sw_ble_en_event_read();
+        bool pulsado = mando_sw_ble_en_event_read();
 
-        if (sw_event && (!esta_desconectado))
+        if (pulsado && !prev)
         {
-            ble_gap_disc_cancel();
-            esta_desconectado = true;
+            scanning_state = !scanning_state;
+            
+            if(scanning_state)
+            {
+                ESP_LOGI(TAG, "Escaneo activado desde el interruptor");
+                ble_client_set_scanning(true);
+                ble_app_on_sync(); 
+            }
+            else
+            {
+                ESP_LOGI(TAG, "Escaneo desactivado desde el interruptor");
+                ble_gap_disc_cancel();
+                ble_client_set_scanning(false);
+            }
         }
-        else if(esta_desconectado)
-        {
-            ble_app_on_sync();
-        }
+        prev = pulsado;
         vTaskDelay(pdMS_TO_TICKS(300));
     }
 }

@@ -1,3 +1,12 @@
+/**
+ * @file    lcd.c
+ * @author  BLE-SEM
+ * @version V0.0
+ * @date    2026-05-21
+ * @brief   Implementación de un lcd display para mostrar los logs sin necesidad de la terminal
+ */
+
+/* Includes ------------------------------------------------------------------*/
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "esp_check.h"
@@ -5,6 +14,23 @@
 #include "freertos/task.h"
 #include "rom/ets_sys.h"
 #include "lcd.h"
+
+/* Private typedef -----------------------------------------------------------*/
+typedef struct 
+{
+    const uint8_t rs;
+    const uint8_t en;
+    const uint8_t bl;
+    const uint8_t d4;
+    const uint8_t d5;
+    const uint8_t d6;
+    const uint8_t d7;
+    const uint8_t bl_active_high; 
+} lcd_pcf_map_t;
+
+/* Private define ------------------------------------------------------------*/
+/* Private macro -------------------------------------------------------------*/
+/* Private variables ---------------------------------------------------------*/
 
 // LCD module defines
 static const uint8_t LCD_LINEONE   = 0x00;        // start of line 1
@@ -26,18 +52,6 @@ static char *tag = "[LCD]";
 static i2c_master_bus_handle_t s_bus = NULL;
 static i2c_master_dev_handle_t s_dev = NULL;
 
-typedef struct 
-{
-    const uint8_t rs;
-    const uint8_t en;
-    const uint8_t bl;
-    const uint8_t d4;
-    const uint8_t d5;
-    const uint8_t d6;
-    const uint8_t d7;
-    const uint8_t bl_active_high; 
-} lcd_pcf_map_t;
-
 static lcd_pcf_map_t g_map =
 {
     .rs = 0,  
@@ -55,14 +69,19 @@ static int s_scl = -1;
 
 static uint8_t s_dev_addr = 0;
 static const uint8_t lcd_addr = 0x27;
+
 static const uint8_t SDA_pin = 8;
 static const uint8_t SCL_pin = 9;
+
 //static const uint8_t lcd_cols = 16;
 static const uint8_t lcd_rows = 2;
 
+/* Private function prototypes -----------------------------------------------*/
 static void lcd_writeByte(uint8_t data, uint8_t mode);
 static void lcd_write4(uint8_t nib4, uint8_t mode);
 static esp_err_t i2c_init(void);
+
+/* Exported functions --------------------------------------------------------*/
 
 void lcd_init()
 {
@@ -134,6 +153,18 @@ void lcd_clearScreen(void)
     vTaskDelay(pdMS_TO_TICKS(10));                                   
 }
 
+/* Private functions ---------------------------------------------------------*/
+
+/******************************************************************************/
+/**
+ * @brief  Inicializa el bus y el dispositivo I2C para el LCD.
+ * 
+ * Si el bus y el dispositivo ya están inicializados con los mismos parámetros, no realiza ninguna acción.
+ * Si cambian los pines o la dirección, elimina y vuelve a crear los recursos necesarios.
+ * 
+ * @retval ESP_OK si la inicialización fue exitosa.
+ * @retval error de ESP-IDF en caso de fallo.
+ */
 static esp_err_t i2c_init(void)
 {
     ESP_LOGI(tag, "Creando bus I2C SDA=%d SCL=%d", SDA_pin, SCL_pin);
@@ -188,6 +219,13 @@ static esp_err_t i2c_init(void)
     return ESP_OK;
 }
 
+/******************************************************************************/
+/**
+ * @brief  Empaqueta un nibble de datos y el bit RS en el formato requerido por el expansor PCF8574.
+ * @param  nib4 Nibble de datos (4 bits) a enviar (D4..D7).
+ * @param  rs   Valor lógico del bit RS (0: comando, 1: datos).
+ * @retval Byte listo para enviar al expansor PCF8574.
+ */
 static uint8_t pack4(uint8_t nib4, bool rs)
 {
     uint8_t out = 0;
@@ -224,6 +262,13 @@ static uint8_t pack4(uint8_t nib4, bool rs)
     return out;
 }
 
+/******************************************************************************/
+/**
+ * @brief  Envía una secuencia de bytes al expansor PCF8574 a través del bus I2C.
+ * @param  seq Puntero al array de bytes a enviar.
+ * @param  n   Número de bytes a enviar.
+ * @retval None
+ */
 static void pcf_write_seq(const uint8_t *seq, size_t n)
 {
     if (!s_dev) 
@@ -238,6 +283,13 @@ static void pcf_write_seq(const uint8_t *seq, size_t n)
     }
 }
 
+/******************************************************************************/
+/**
+ * @brief  Envía un nibble (4 bits) al LCD en modo 4 bits.
+ * @param  nib4 Nibble de datos a enviar (D4..D7).
+ * @param  mode Modo de operación (LCD_COMMAND o LCD_WRITE).
+ * @retval None
+ */
 static void lcd_write4(uint8_t nib4, uint8_t mode)
 {
     bool rs = (mode == LCD_WRITE);
@@ -255,10 +307,18 @@ static void lcd_write4(uint8_t nib4, uint8_t mode)
     ets_delay_us(80);  // margen tras cada nibble
 }
 
-
+/******************************************************************************/
+/**
+ * @brief  Envía un byte completo al LCD, transmitiendo primero el nibble alto y luego el bajo.
+ * @param  data Byte de datos/comando a enviar.
+ * @param  mode Modo de operación (LCD_COMMAND o LCD_WRITE).
+ * @retval None
+ */
 static void lcd_writeByte(uint8_t data, uint8_t mode)
 {
     lcd_write4((data >> 4) & 0x0F, mode);  // nibble alto
     lcd_write4(data & 0x0F, mode);         // nibble bajo
     ets_delay_us(80);  
 }
+
+/* End of file ****************************************************************/
