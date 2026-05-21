@@ -1,5 +1,5 @@
 /**
- * @file    hd44780.h
+ * @file    lcd.h
  * @author  BLE-SEM
  * @version V0.0
  * @date    2026-05-16
@@ -7,8 +7,8 @@
  */
 
 /* Define to prevent recursive inclusion -------------------------------------*/
-#ifndef HD44780
-#define HD44780
+#ifndef LCD_H
+#define LCD_H
 
 #ifdef __cplusplus
  extern "C" {
@@ -26,14 +26,10 @@
 /******************************************************************************/
 /**
  * @brief  Inicializa el LCD con la dirección y pines especificados.
- * @param  addr Dirección del LCD en el bus I2C.
- * @param  dataPin Pin de datos.
- * @param  clockPin Pin de reloj.
- * @param  cols Número de columnas del LCD.
- * @param  rows Número de filas del LCD.
+ * @param  None
  * @retval None
  */
-void LCD_init(uint8_t addr, uint8_t dataPin, uint8_t clockPin, uint8_t cols, uint8_t rows);
+void lcd_init();
 
 /******************************************************************************/
 /**
@@ -42,21 +38,21 @@ void LCD_init(uint8_t addr, uint8_t dataPin, uint8_t clockPin, uint8_t cols, uin
  * @param  row Fila destino.
  * @retval None
  */
-void LCD_setCursor(uint8_t col, uint8_t row);
+void lcd_setCursor(uint8_t col, uint8_t row);
 
 /******************************************************************************/
 /**
  * @brief  Lleva el cursor a la posición inicial (0,0).
  * @retval None
  */
-void LCD_home(void);
+void lcd_home(void);
 
 /******************************************************************************/
 /**
  * @brief  Limpia la pantalla del LCD y coloca el cursor en (0,0).
  * @retval None
  */
-void LCD_clearScreen(void);
+void lcd_clearScreen(void);
 
 /******************************************************************************/
 /**
@@ -64,7 +60,7 @@ void LCD_clearScreen(void);
  * @param  c Carácter a escribir.
  * @retval None
  */
-void LCD_writeChar(char c);
+void lcd_writeChar(char c);
 
 /******************************************************************************/
 /**
@@ -72,11 +68,12 @@ void LCD_writeChar(char c);
  * @param  str Cadena de texto terminada en null.
  * @retval None
  */
-void LCD_writeStr(char* str); 
+void lcd_writeStr(char* str); 
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif
+#endif /* LCD_H */
+
 /*** End of file **************************************************************/

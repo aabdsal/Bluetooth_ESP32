@@ -21,7 +21,7 @@
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
 
-static const gpio_num_t BTN_SELECT = GPIO_NUM_15;
+static const gpio_num_t BTN_SELECT = GPIO_NUM_4;
 static const gpio_num_t BTN_OK     = GPIO_NUM_5;
 static const gpio_num_t BTN_RIGHT  = GPIO_NUM_6;
 static const gpio_num_t BTN_LEFT   = GPIO_NUM_7;

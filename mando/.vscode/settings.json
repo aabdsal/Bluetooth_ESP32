@@ -10,5 +10,7 @@
     "--background-index",
     "--query-driver=**",
     "--compile-commands-dir=/home/andreu/dev/C/espressif/Bluetooth_ESP32/mando/build"
-  ]
+],
+"idf.flashType": "UART",
+"idf.port": "/dev/tty.usbmodem5AB90816231"
 }
