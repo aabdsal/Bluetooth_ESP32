@@ -33,7 +33,8 @@ void app_main(void)
     lcd_init();
     lcd_clearScreen();
     lcd_writeStr("Mando Init");
-    
+    lcd_setCursor(0, 1);
+    lcd_writeStr("BLE desactivado");
     mando_init();
     ble_client_set_device_name("ESP32-S3 Mando");
     ble_client_init();

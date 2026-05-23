@@ -236,13 +236,16 @@ static void mando_task(void *pvParameters)
 
     uint8_t servo = 1;
     bool msg_set = false;
+    bool robot_conected = false;
 
     for(;;)
     {   
         char msg[16];
-        
-        if(ble_client_is_connected())
+
+        if(ble_client_is_connected() && !robot_conected)
         {
+            robot_conected = true; // para imprimir el mensaje solo 1 vez
+
             lcd_clearScreen(); 
             lcd_writeStr("¡Robot");
             lcd_setCursor(0, 1);
@@ -250,7 +253,13 @@ static void mando_task(void *pvParameters)
 
             gpio_set_level(LED_PIN, 1);
         }
-        else if (ble_client_is_scanning())
+        else
+        {
+            gpio_set_level(LED_PIN, 0);
+            robot_conected = false;
+        }
+        
+        if (ble_client_is_scanning())
         {
             lcd_clearScreen(); 
             lcd_writeStr("Iniciando");
@@ -267,6 +276,77 @@ static void mando_task(void *pvParameters)
         {
             gpio_set_level(LED_PIN, 0);
         }
+
+
+        if(mando_btn_right_read() && !ble_client_is_connected())
+        {
+            char lcd_msg[16];
+            snprintf(lcd_msg, sizeof(lcd_msg), "invalid msg: R");
+
+            lcd_clearScreen();
+            lcd_writeStr(lcd_msg);
+            
+            
+            snprintf(lcd_msg, sizeof(lcd_msg), "No robot conect");
+
+            lcd_setCursor(0, 1);
+            lcd_writeStr(lcd_msg);
+
+            ESP_LOGI(tag, "No puedes girar sin Robot Conectado");
+
+            vTaskDelay(pdMS_TO_TICKS(300));
+        }
+        else if (mando_btn_right_read())
+        {
+            snprintf(msg, sizeof(msg), "S%d,A:%s", servo, "H");
+            msg_set = true;
+
+            char lcd_msg[16];
+            snprintf(lcd_msg, sizeof(lcd_msg), "Giro: S%d,A:%s", servo, "H");
+
+            lcd_clearScreen();
+            lcd_writeStr(lcd_msg);
+            
+            ESP_LOGI(tag, "Boton right seleccionado");
+
+            vTaskDelay(pdMS_TO_TICKS(300));
+        }
+
+        if(mando_btn_left_read() && !ble_client_is_connected())
+        {
+            char lcd_msg[16];
+            snprintf(lcd_msg, sizeof(lcd_msg), "invalid msg: L");
+
+            lcd_clearScreen();
+            lcd_writeStr(lcd_msg);
+            
+            memset(lcd_msg, 0, sizeof(lcd_msg));
+            snprintf(lcd_msg, sizeof(lcd_msg), "No robot conect");
+
+            lcd_setCursor(0, 1);
+            lcd_writeStr(lcd_msg);
+
+            ESP_LOGI(tag, "No puedes girar sin Robot Conectado");
+
+            vTaskDelay(pdMS_TO_TICKS(300));
+        }
+        else if (mando_btn_left_read())
+        {
+
+            snprintf(msg, sizeof(msg), "S%d,A:%s", servo, "A");
+            msg_set = true;
+
+            char lcd_msg[16];
+            snprintf(lcd_msg, sizeof(lcd_msg), "Giro: S%d,A:%s", servo, "A");
+
+            lcd_clearScreen();
+            lcd_writeStr(lcd_msg);
+
+            ESP_LOGI(tag, "Boton left seleccionado");
+
+            vTaskDelay(pdMS_TO_TICKS(300));
+        }
+
 
         if (mando_btn_select_read())
         {
@@ -286,59 +366,50 @@ static void mando_task(void *pvParameters)
             
             vTaskDelay(pdMS_TO_TICKS(300));
         }
-
-        if (mando_btn_right_read())
+        else if(mando_btn_ok_read() && !ble_client_is_connected())
         {
-            snprintf(msg, sizeof(msg), "S%d,A:%s", servo, "H");
-            msg_set = true;
+            char lcd_msg[16];
+            snprintf(lcd_msg, sizeof(lcd_msg), "invalid msg: OK");
 
             lcd_clearScreen();
-            lcd_writeStr("Boton right");
-            lcd_setCursor(0, 1);
-            lcd_writeStr("seleccionado");
+            lcd_writeStr(lcd_msg);
             
-            ESP_LOGI(tag, "Boton right seleccionado");
+            memset(lcd_msg, 0, sizeof(lcd_msg));
+            snprintf(lcd_msg, sizeof(lcd_msg), "No robot conect");
 
-            vTaskDelay(pdMS_TO_TICKS(300));
-        }
-        
-        if (mando_btn_left_read())
-        {
-            snprintf(msg, sizeof(msg), "S%d,A:%s", servo, "A");
-            msg_set = true;
-
-            lcd_clearScreen();
-            lcd_writeStr("Boton left");
             lcd_setCursor(0, 1);
-            lcd_writeStr("seleccionado");
+            lcd_writeStr(lcd_msg);
 
-            ESP_LOGI(tag, "Boton left seleccionado");
+            ESP_LOGI(tag, "No puedes enviar un mensaje sin el robot Conectado");
 
             vTaskDelay(pdMS_TO_TICKS(300));
         }
-
-        
-        if (mando_btn_ok_read())
+        else if (mando_btn_ok_read())
         {
             snprintf(msg, sizeof(msg), "S%d,A:%s", servo, "O");
             msg_set = true;
 
-            lcd_clearScreen();
+            char lcd_msg[16];
+            snprintf(lcd_msg, sizeof(lcd_msg), "Enviado Servo");
 
-            lcd_writeStr("Boton ok");
+            lcd_clearScreen();
+            lcd_writeStr(lcd_msg);
+
+            memset(lcd_msg, 0, sizeof(lcd_msg));
+            snprintf(lcd_msg, sizeof(lcd_msg), "selec: %d", servo);
+
             lcd_setCursor(0, 1);
-            lcd_writeStr("seleccionado");
-            
-            ESP_LOGI(tag, "Boton ok seleccionado");
+            lcd_writeStr(lcd_msg);
+
+            ESP_LOGI(tag, "Enviando Boton ok");
             vTaskDelay(pdMS_TO_TICKS(300));
         }
 
         if(msg_set)
         {
             ble_send(msg);
+            msg_set = false;
         }
-
-        msg_set = false;
         
         vTaskDelay(pdMS_TO_TICKS(300));
     }
