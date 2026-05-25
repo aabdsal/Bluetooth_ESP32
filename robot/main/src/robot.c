@@ -28,7 +28,6 @@
 
 static const char *tag = "[ROBOT]";
 
-static const gpio_num_t INTERRUPTOR_PIN = GPIO_NUM_36; // Posiblemente se ve fuera
 static const gpio_num_t LED_PIN         = GPIO_NUM_37;
 static const gpio_num_t SDA_PIN         = GPIO_NUM_35;
 static const gpio_num_t SCL_PIN         = GPIO_NUM_45;
@@ -57,15 +56,12 @@ static const uint8_t PCA9685_ADDR = 0x40;
 
 static uint16_t servo_angle[SERVO_COUNT] = {90, 90, 90, 90, 90, 90};
 
-static TaskHandle_t bluetooth_control_task_handle = NULL;
 static TaskHandle_t led_pool_task_handle = NULL;
 
 static i2c_master_bus_handle_t i2c_bus = NULL;
 static i2c_master_dev_handle_t dev_handle = NULL;
 
 /* Private function prototypes ----------------------------------------------*/
-static void gpio_handler_isr(void *arg);
-static void bluetooth_control_task(void *arg);
 static void led_pool_task(void *arg);
 
 static uint16_t clamp_angle(int angle);
@@ -96,20 +92,28 @@ static void i2c_init(void)
     ESP_ERROR_CHECK(i2c_master_bus_add_device(i2c_bus, &dev_cfg, &dev_handle));
 }
 
-static void write_reg(uint8_t reg, uint8_t val)
+static esp_err_t write_reg(uint8_t reg, uint8_t val)
 {
     uint8_t data[2] = {reg, val};
-    ESP_ERROR_CHECK(i2c_master_transmit(dev_handle, data, 2, pdMS_TO_TICKS(100)));
+    return i2c_master_transmit(dev_handle, data, 2, pdMS_TO_TICKS(100));
 }
 
-static void pca9685_init(void)
+static esp_err_t pca9685_init(void)
 {
+    esp_err_t ret;
+
     // Entrar en modo sleep para configurar prescale
-    write_reg(0x00, 0x10);               // MODE1, SLEEP bit
-    write_reg(0xFE, 121);                // PRESCALE = 121 → 50 Hz
-    write_reg(0x00, 0x20);               // MODE1, AI bit (auto-increment)
+    ret = write_reg(0x00, 0x10);               // MODE1, SLEEP bit
+    if (ret != ESP_OK) return ret;
+
+    ret = write_reg(0xFE, 121);                // PRESCALE = 121 → 50 Hz
+    if (ret != ESP_OK) return ret;
+
+    ret = write_reg(0x00, 0x20);               // MODE1, AI bit (auto-increment)
+    if (ret != ESP_OK) return ret;
+
     vTaskDelay(pdMS_TO_TICKS(5));
-    write_reg(0x00, 0x20 | 0x80);        // MODE1, AI + RESTART
+    return write_reg(0x00, 0x20 | 0x80);        // MODE1, AI + RESTART
 }
 
 /**
@@ -171,76 +175,6 @@ static uint16_t angle_to_ticks(uint16_t angle)
     return (uint16_t)((pulse_us * 4096U) / PCA9685_PWM_PERIOD_US);
 }
 
-/**
- * @brief ISR del interruptor.
- *
- * La ISR NO arranca ni para BLE directamente.
- * Solo despierta/notifica a la tarea bluetooth_control_task.
- */
-static void IRAM_ATTR gpio_handler_isr(void *arg)
-{
-    uint32_t pin = (uint32_t)(uintptr_t)arg;
-
-    if (pin == INTERRUPTOR_PIN && bluetooth_control_task_handle != NULL)
-    {
-        BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-
-        vTaskNotifyGiveFromISR(
-            bluetooth_control_task_handle,
-            &xHigherPriorityTaskWoken
-        );
-
-        if (xHigherPriorityTaskWoken == pdTRUE)
-        {
-            portYIELD_FROM_ISR();
-        }
-    }
-}
-
-/**
- * @brief Tarea que controla el estado BLE segun el interruptor.
- *
- * ON  -> gap_svc_start_advertising()
- * OFF -> gap_svc_stop_advertising()
- */
-static void bluetooth_control_task(void *arg)
-{
-    int last_applied_state = -1;
-    for(;;)
-    {
-        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(250));
-        vTaskDelay(pdMS_TO_TICKS(50));
-
-        int current_state = gpio_get_level(INTERRUPTOR_PIN);
-
-        if (current_state != last_applied_state)
-        {
-            last_applied_state = current_state;
-
-            if (current_state == 0)
-            {
-                ESP_LOGI(tag, "Interruptor ON -> activar BLE advertising");
-
-                gpio_set_level(LED_PIN, 1);
-                gap_svc_start_advertising();
-                taskENTER_CRITICAL(&led_mux);
-                estado_led = PARPADEO;
-                portEXIT_CRITICAL(&led_mux);
-            }
-            else
-            {
-                ESP_LOGI(tag, "Interruptor OFF -> desactivar BLE advertising");
-
-                gpio_set_level(LED_PIN, 0);
-                gap_svc_stop_advertising();
-                taskENTER_CRITICAL(&led_mux);
-                estado_led = APAGADO;
-                portEXIT_CRITICAL(&led_mux);
-            }
-        }
-    }
-}
-
 static void led_pool_task(void *arg)
 {
     const TickType_t xDelay = pdMS_TO_TICKS(500);
@@ -274,17 +208,7 @@ static void led_pool_task(void *arg)
 
 void robot_init(void)
 {
-    ESP_LOGI(tag, "Iniciando configuracion del interruptor, LED y robot");
-
-    gpio_config_t interruptor_conf =
-    {
-        .pin_bit_mask = 1ULL << INTERRUPTOR_PIN,
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-
-        .intr_type = GPIO_INTR_ANYEDGE
-    };
+    ESP_LOGI(tag, "Iniciando configuracion del LED y robot");
 
     gpio_config_t led_conf =
     {
@@ -297,12 +221,6 @@ void robot_init(void)
 
     esp_err_t ret;
 
-    ret = gpio_config(&interruptor_conf);
-    if (ret != ESP_OK) 
-    {
-        ESP_LOGE(tag, "gpio_config(interruptor_conf) fallo: %s", esp_err_to_name(ret));
-    }
-
     ret = gpio_config(&led_conf);
     if (ret != ESP_OK) 
     {
@@ -311,38 +229,20 @@ void robot_init(void)
 
     gpio_set_level(LED_PIN, 0);
     taskENTER_CRITICAL(&led_mux);
-    estado_led = APAGADO;
+    estado_led = PARPADEO;
     portEXIT_CRITICAL(&led_mux);
 
-    esp_err_t err = gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
-
-    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE)
-    {
-        ESP_LOGE(tag, "gpio_install_isr_service() fallo: %s", esp_err_to_name(ret));
-    }
-    
-    ret = gpio_isr_handler_add(INTERRUPTOR_PIN, gpio_handler_isr,
-            (void *)(uintptr_t)INTERRUPTOR_PIN);
-
-    if (ret != ESP_OK)
-    {
-        ESP_LOGE(tag, "gpio_isr_handler_add() fallo: %s", esp_err_to_name(ret));
-    }
-
     i2c_init();
-    pca9685_init();
+
+    esp_err_t pca_ret = pca9685_init();
+    if (pca_ret != ESP_OK)
+    {
+        ESP_LOGE(tag, "pca9685_init() fallo: %s", esp_err_to_name(pca_ret));
+    }
+
     ESP_LOGI(tag, "Robot inicializado correctamente");
 
     xTaskCreate(
-        bluetooth_control_task,
-        "ble_ctrl_task",
-        4096,
-        NULL,
-        5,
-        &bluetooth_control_task_handle
-    );
-
-        xTaskCreate(
         led_pool_task,
         "led_pool_task",
         4096,

@@ -43,11 +43,9 @@ static int gap_svc_gap_event(struct ble_gap_event *event, void *arg);
 
 static uint8_t own_addr_type;
 
-static bool s_ble_enabled = false;
 static bool s_ble_synced  = false;
 
 static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-static portMUX_TYPE ble_mux = portMUX_INITIALIZER_UNLOCKED;
 
 void ble_store_config_init(void);
 
@@ -83,14 +81,6 @@ static void gap_svc_print_conn_desc(struct ble_gap_conn_desc *desc)
  */
 static void gap_svc_advertise(void)
 {
-    bool ble_active = gap_svc_get_enabled();
-
-    if (!ble_active)
-    {
-        ESP_LOGI(tag, "No se inicia advertising porque BLE esta deshabilitado");
-        return;
-    }
-
     if (!s_ble_synced)
     {
         ESP_LOGW(tag, "No se puede anunciar todavia: host BLE no sincronizado");
@@ -198,10 +188,7 @@ static int gap_svc_gap_event(struct ble_gap_event *event, void *arg)
             else
             {
                 s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-                if (gap_svc_get_enabled())
-                {
-                    gap_svc_advertise();
-                }
+                gap_svc_advertise();
             }
             return 0;
 
@@ -216,10 +203,7 @@ static int gap_svc_gap_event(struct ble_gap_event *event, void *arg)
             taskEXIT_CRITICAL(&led_mux);
 
             s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-            if (gap_svc_get_enabled())
-            {
-                gap_svc_advertise();
-            }
+            gap_svc_advertise();
             return 0;
 
         case BLE_GAP_EVENT_ADV_COMPLETE:
@@ -229,10 +213,7 @@ static int gap_svc_gap_event(struct ble_gap_event *event, void *arg)
                 event->adv_complete.reason
             );
 
-            if (gap_svc_get_enabled())
-            {
-                gap_svc_advertise();
-            }
+            gap_svc_advertise();
             return 0;
 
         case BLE_GAP_EVENT_SUBSCRIBE:
@@ -273,11 +254,6 @@ void gap_svc_on_reset(int reason)
     MODLOG_DFLT(ERROR, "Resetting state; reason=%d\n", reason);
 }
 
-/**
- * Importante:
- * Aqui NO forzamos advertising siempre.
- * Solo anunciamos si el interruptor ya estaba en ON.
- */
 void gap_svc_on_sync(void)
 {
     int rc;
@@ -315,11 +291,7 @@ void gap_svc_on_sync(void)
 
     ESP_LOGI(tag, "BLE host sincronizado");
 
-    if (gap_svc_get_enabled())
-    {
-        ESP_LOGI(tag, "Interruptor estaba ON al sincronizar -> iniciar advertising");
-        gap_svc_advertise();
-    }
+    gap_svc_advertise();
 }
 
 void gap_svc_host_task(void *pvParameters)
@@ -334,69 +306,6 @@ void gap_svc_host_task(void *pvParameters)
 void gap_svc_start(void)
 {
     nimble_port_freertos_init(gap_svc_host_task);
-}
-
-void gap_svc_set_enabled(bool enabled)
-{
-    portENTER_CRITICAL(&ble_mux);
-    s_ble_enabled = enabled;
-    portEXIT_CRITICAL(&ble_mux);
-}
-
-bool gap_svc_get_enabled(void)
-{
-    bool ble_active;
-
-    portENTER_CRITICAL(&ble_mux);
-    ble_active = s_ble_enabled;
-    portEXIT_CRITICAL(&ble_mux);
-
-    return ble_active;
-}
-
-void gap_svc_start_advertising(void)
-{
-    gap_svc_set_enabled(true);
-    gap_svc_advertise();
-}
-
-void gap_svc_stop_advertising(void)
-{
-    gap_svc_set_enabled(false);
-
-    if (ble_gap_adv_active())
-    {
-        int rc = ble_gap_adv_stop();
-
-        if (rc == 0)
-        {
-            ESP_LOGI(tag, "BLE advertising DESACTIVADO");
-        }
-        else
-        {
-            ESP_LOGW(tag, "Error parando advertising; rc = %d", rc);
-        }
-    }
-    else
-    {
-        ESP_LOGI(tag, "Advertising ya estaba parado");
-    }
-
-    if (s_conn_handle != BLE_HS_CONN_HANDLE_NONE)
-    {
-        int rc = ble_gap_terminate(s_conn_handle, BLE_ERR_REM_USER_CONN_TERM);
-
-        if (rc == 0)
-        {
-            ESP_LOGI(tag, "Conexion BLE terminada por interruptor OFF");
-        }
-        else
-        {
-            ESP_LOGW(tag, "Error terminando conexion BLE; rc=%d", rc);
-        }
-
-        s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-    }
 }
 
 void gap_svc_set_device_name(const char *name)
