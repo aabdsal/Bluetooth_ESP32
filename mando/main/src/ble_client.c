@@ -340,7 +340,14 @@ static void ble_client_scanning_task(void *pvParameters)
                 ESP_LOGI(TAG, "Escaneo desactivado desde el interruptor");
                 ble_gap_disc_cancel();
                 ble_client_set_scanning(false);
-            }
+                
+                // Desconectar si está conectado
+                if (ble_client_is_connected()) 
+                {
+                    ESP_LOGI(TAG, "Desconectando del robot por petición del usuario");
+                    ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+                }
+            } 
         }
         prev = pulsado;
         vTaskDelay(pdMS_TO_TICKS(300));

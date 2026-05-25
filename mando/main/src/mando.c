@@ -14,7 +14,7 @@
 
 #include "mando.h"
 #include "ble_client.h"
-#include "lcd.h"
+//#include "lcd.h"
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -44,6 +44,15 @@ static portMUX_TYPE btn_ok_spinlock = portMUX_INITIALIZER_UNLOCKED;
 static portMUX_TYPE btn_right_spinlock = portMUX_INITIALIZER_UNLOCKED;
 static portMUX_TYPE btn_left_spinlock = portMUX_INITIALIZER_UNLOCKED;
 static portMUX_TYPE sw_ble_en_spinlock = portMUX_INITIALIZER_UNLOCKED;
+
+static uint32_t last_btn_ok_tick = 0;
+static uint32_t last_btn_left_tick = 0;
+static uint32_t last_btn_right_tick = 0;
+static uint32_t last_btn_select_tick = 0;
+
+static uint32_t last_sw_ble_en_tick = 0;
+
+static const uint8_t DEBOUNCE_TICKS = 50; // 50 ms
 
 /* Private function prototypes -----------------------------------------------*/
 
@@ -161,6 +170,8 @@ void mando_init(void)
         5, 
         NULL
     );
+
+    ESP_LOGI(tag, "Mando inicializado correctamente");
 }
 
 bool mando_btn_select_read(void)
@@ -236,111 +247,90 @@ static void mando_task(void *pvParameters)
 
     uint8_t servo = 1;
     bool msg_set = false;
-    bool robot_conected = false;
-
+    bool conectado = false;
+    
     for(;;)
     {   
         char msg[16];
 
-        if(ble_client_is_connected() && !robot_conected)
+        /*if((mando_btn_right_read() || mando_btn_left_read() || mando_btn_ok_read() || mando_btn_select_read()) && (!ble_client_is_connected()))
         {
-            robot_conected = true; // para imprimir el mensaje solo 1 vez
-
-            lcd_clearScreen(); 
-            lcd_writeStr("¡Robot");
-            lcd_setCursor(0, 1);
-            lcd_writeStr("conectado!");
-
-            gpio_set_level(LED_PIN, 1);
-        }
-        else
-        {
-            gpio_set_level(LED_PIN, 0);
-            robot_conected = false;
-        }
-        
-        if (ble_client_is_scanning())
-        {
-            lcd_clearScreen(); 
-            lcd_writeStr("Iniciando");
-            lcd_setCursor(0, 1);
-            lcd_writeStr("escaneo...");
-
-            gpio_set_level(LED_PIN, 1);
-            vTaskDelay(pdMS_TO_TICKS(500));
-            gpio_set_level(LED_PIN, 0);
+            ESP_LOGI(tag, "No puedes usar este boton porque el robot no esta conectado");
+            ESP_LOGI(tag, "Pulsa el interruptor para iniciar el escaneo ble...\n");
             vTaskDelay(pdMS_TO_TICKS(500));
             continue;
+        }*/
+
+        if(ble_client_is_connected())
+        {
+
+            /*if(!conectado)
+            {
+                lcd_clearScreen(); 
+                lcd_writeStr("¡Robot");
+                lcd_setCursor(0, 1);
+                lcd_writeStr("conectado!");
+                conectado = true;
+            }*/
+            if(!conectado)
+            {
+                ESP_LOGI(tag, "¡Robot conectado!");
+                conectado = true;
+            }
+            gpio_set_level(LED_PIN, 1);
+        }
+        else if (ble_client_is_scanning()) 
+        {
+                /*
+                lcd_clearScreen(); 
+                vTaskDelay(pdMS_TO_TICKS(500));
+                lcd_writeStr("Iniciando");
+                lcd_setCursor(0, 1);
+                lcd_writeStr("escaneo...");
+                */
+
+                gpio_set_level(LED_PIN, 1);
+                vTaskDelay(pdMS_TO_TICKS(500));
+                gpio_set_level(LED_PIN, 0);
+                vTaskDelay(pdMS_TO_TICKS(500));
+                continue;
         }
         else
         {
+            conectado = false;
             gpio_set_level(LED_PIN, 0);
         }
+                
+        
 
-
-        if(mando_btn_right_read() && !ble_client_is_connected())
-        {
-            char lcd_msg[16];
-            snprintf(lcd_msg, sizeof(lcd_msg), "invalid msg: R");
-
-            lcd_clearScreen();
-            lcd_writeStr(lcd_msg);
-            
-            
-            snprintf(lcd_msg, sizeof(lcd_msg), "No robot conect");
-
-            lcd_setCursor(0, 1);
-            lcd_writeStr(lcd_msg);
-
-            ESP_LOGI(tag, "No puedes girar sin Robot Conectado");
-
-            vTaskDelay(pdMS_TO_TICKS(300));
-        }
-        else if (mando_btn_right_read())
+        
+        if (mando_btn_right_read())
         {
             snprintf(msg, sizeof(msg), "S%d,A:%s", servo, "H");
             msg_set = true;
 
-            char lcd_msg[16];
+            /*char lcd_msg[16];
             snprintf(lcd_msg, sizeof(lcd_msg), "Giro: S%d,A:%s", servo, "H");
 
             lcd_clearScreen();
-            lcd_writeStr(lcd_msg);
+            lcd_writeStr(lcd_msg);*/
             
             ESP_LOGI(tag, "Boton right seleccionado");
 
             vTaskDelay(pdMS_TO_TICKS(300));
         }
 
-        if(mando_btn_left_read() && !ble_client_is_connected())
-        {
-            char lcd_msg[16];
-            snprintf(lcd_msg, sizeof(lcd_msg), "invalid msg: L");
-
-            lcd_clearScreen();
-            lcd_writeStr(lcd_msg);
-            
-            memset(lcd_msg, 0, sizeof(lcd_msg));
-            snprintf(lcd_msg, sizeof(lcd_msg), "No robot conect");
-
-            lcd_setCursor(0, 1);
-            lcd_writeStr(lcd_msg);
-
-            ESP_LOGI(tag, "No puedes girar sin Robot Conectado");
-
-            vTaskDelay(pdMS_TO_TICKS(300));
-        }
-        else if (mando_btn_left_read())
+        if (mando_btn_left_read())
         {
 
             snprintf(msg, sizeof(msg), "S%d,A:%s", servo, "A");
             msg_set = true;
 
-            char lcd_msg[16];
+            /*char lcd_msg[16];
             snprintf(lcd_msg, sizeof(lcd_msg), "Giro: S%d,A:%s", servo, "A");
 
             lcd_clearScreen();
-            lcd_writeStr(lcd_msg);
+            lcd_writeStr(lcd_msg);*/
 
             ESP_LOGI(tag, "Boton left seleccionado");
 
@@ -356,41 +346,24 @@ static void mando_task(void *pvParameters)
                 servo = 1;
             }
 
-            char lcd_msg[16];
+            /*char lcd_msg[16];
             snprintf(lcd_msg, sizeof(lcd_msg), "Servo selec: %d", servo);
             
             lcd_clearScreen();            
-            lcd_writeStr(lcd_msg);
+            lcd_writeStr(lcd_msg);*/
 
             ESP_LOGI(tag, "Servo seleccionado: %d", servo);
             
             vTaskDelay(pdMS_TO_TICKS(300));
         }
-        else if(mando_btn_ok_read() && !ble_client_is_connected())
-        {
-            char lcd_msg[16];
-            snprintf(lcd_msg, sizeof(lcd_msg), "invalid msg: OK");
-
-            lcd_clearScreen();
-            lcd_writeStr(lcd_msg);
-            
-            memset(lcd_msg, 0, sizeof(lcd_msg));
-            snprintf(lcd_msg, sizeof(lcd_msg), "No robot conect");
-
-            lcd_setCursor(0, 1);
-            lcd_writeStr(lcd_msg);
-
-            ESP_LOGI(tag, "No puedes enviar un mensaje sin el robot Conectado");
-
-            vTaskDelay(pdMS_TO_TICKS(300));
-        }
-        else if (mando_btn_ok_read())
+        
+        if (mando_btn_ok_read())
         {
             snprintf(msg, sizeof(msg), "S%d,A:%s", servo, "O");
             msg_set = true;
 
-            char lcd_msg[16];
-            snprintf(lcd_msg, sizeof(lcd_msg), "Enviado Servo");
+            /*char lcd_msg[16];
+            snprintf(lcd_msg, sizeof(lcd_msg), "Servo enviado");
 
             lcd_clearScreen();
             lcd_writeStr(lcd_msg);
@@ -399,9 +372,9 @@ static void mando_task(void *pvParameters)
             snprintf(lcd_msg, sizeof(lcd_msg), "selec: %d", servo);
 
             lcd_setCursor(0, 1);
-            lcd_writeStr(lcd_msg);
+            lcd_writeStr(lcd_msg);*/
 
-            ESP_LOGI(tag, "Enviando Boton ok");
+            ESP_LOGI(tag, "Mensaje enviado a traves de boton ok: %s", msg);
             vTaskDelay(pdMS_TO_TICKS(300));
         }
 
@@ -423,9 +396,15 @@ static void mando_task(void *pvParameters)
  */
 static void IRAM_ATTR btn_select_handler_isr(void *arg)
 {
-    taskENTER_CRITICAL_ISR(&btn_select_spinlock);
-    btn_select_save = true;
-    taskEXIT_CRITICAL_ISR(&btn_select_spinlock);
+    uint32_t now = xTaskGetTickCountFromISR();
+    
+    if (now - last_btn_select_tick > DEBOUNCE_TICKS) 
+    {
+        taskENTER_CRITICAL_ISR(&btn_select_spinlock);
+        btn_select_save = true;
+        taskEXIT_CRITICAL_ISR(&btn_select_spinlock);
+        last_btn_select_tick = now;
+    }
 }
 
 /******************************************************************************/
@@ -436,9 +415,15 @@ static void IRAM_ATTR btn_select_handler_isr(void *arg)
  */
 static void IRAM_ATTR btn_ok_handler_isr(void *arg)
 {
-    taskENTER_CRITICAL_ISR(&btn_ok_spinlock);
-    btn_ok_save = true;
-    taskEXIT_CRITICAL_ISR(&btn_ok_spinlock);
+    uint32_t now = xTaskGetTickCountFromISR();
+
+    if (now - last_btn_ok_tick > DEBOUNCE_TICKS) 
+    {
+        taskENTER_CRITICAL_ISR(&btn_ok_spinlock);
+        btn_ok_save = true;
+        taskEXIT_CRITICAL_ISR(&btn_ok_spinlock);
+        last_btn_ok_tick = now;
+    }
 }
 
 /******************************************************************************/
@@ -449,9 +434,15 @@ static void IRAM_ATTR btn_ok_handler_isr(void *arg)
  */
 static void IRAM_ATTR btn_right_handler_isr(void *arg)
 {
-    taskENTER_CRITICAL_ISR(&btn_right_spinlock);
-    btn_right_save = true;
-    taskEXIT_CRITICAL_ISR(&btn_right_spinlock);
+    uint32_t now = xTaskGetTickCountFromISR();
+
+    if (now - last_btn_right_tick > DEBOUNCE_TICKS) 
+    {
+        taskENTER_CRITICAL_ISR(&btn_right_spinlock);
+        btn_right_save = true;
+        taskEXIT_CRITICAL_ISR(&btn_right_spinlock);
+        last_btn_right_tick = now;
+    }
 }
 
 /******************************************************************************/
@@ -462,9 +453,15 @@ static void IRAM_ATTR btn_right_handler_isr(void *arg)
  */
 static void IRAM_ATTR btn_left_handler_isr(void *arg)
 {
-    taskENTER_CRITICAL_ISR(&btn_left_spinlock);
-    btn_left_save = true;
-    taskEXIT_CRITICAL_ISR(&btn_left_spinlock);
+    uint32_t now = xTaskGetTickCountFromISR();
+
+    if (now - last_btn_left_tick > DEBOUNCE_TICKS) 
+    {
+        taskENTER_CRITICAL_ISR(&btn_left_spinlock);
+        btn_left_save = true;
+        taskEXIT_CRITICAL_ISR(&btn_left_spinlock);
+        last_btn_left_tick = now;
+    }
 }
 
 /******************************************************************************/
@@ -475,9 +472,15 @@ static void IRAM_ATTR btn_left_handler_isr(void *arg)
  */
 static void IRAM_ATTR sw_ble_en_handler_isr(void *arg)
 {
-    taskENTER_CRITICAL_ISR(&sw_ble_en_spinlock);
-    sw_ble_en_save = true;
-    taskEXIT_CRITICAL_ISR(&sw_ble_en_spinlock);
+    uint32_t now = xTaskGetTickCountFromISR();
+
+    if (now - last_sw_ble_en_tick > DEBOUNCE_TICKS) 
+    {
+        taskENTER_CRITICAL_ISR(&sw_ble_en_spinlock);
+        sw_ble_en_save = true;
+        taskEXIT_CRITICAL_ISR(&sw_ble_en_spinlock);
+        last_sw_ble_en_tick = now;
+    }
 }
 
 /* End of file ****************************************************************/

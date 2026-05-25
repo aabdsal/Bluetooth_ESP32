@@ -75,7 +75,8 @@ portMUX_TYPE led_mux = portMUX_INITIALIZER_UNLOCKED;
 
 static void i2c_init(void)
 {
-    i2c_master_bus_config_t bus_cfg = {
+    i2c_master_bus_config_t bus_cfg = 
+    {
         .i2c_port = I2C_NUM_0,
         .sda_io_num = SDA_PIN,
         .scl_io_num = SCL_PIN,
@@ -84,7 +85,8 @@ static void i2c_init(void)
     };
     ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &i2c_bus));
 
-    i2c_device_config_t dev_cfg = {
+    i2c_device_config_t dev_cfg = 
+    {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = PCA9685_ADDR,
         .scl_speed_hz = 100000,
@@ -255,23 +257,25 @@ void robot_init(void)
 void move_servo(robot_servo_t servo, robot_move_t move)
 {
     uint8_t channel = servo_to_channel(servo);
-    if (channel == 0xFF) {
+    if (channel == 0xFF) 
+    {
         ESP_LOGE(tag, "Servo no válido");
         return;
     }
 
-    int new_angle = servo_angle[channel];
+    int new_angle = servo_angle[servo];
     if (move == HORARIO)
         new_angle += SERVO_STEP;
     else if (move == ANTIHORARIO)
         new_angle -= SERVO_STEP;
-    else {
+    else 
+    {
         ESP_LOGE(tag, "Movimiento no válido");
         return;
     }
 
-    servo_angle[channel] = clamp_angle(new_angle);
-    uint16_t ticks = angle_to_ticks(servo_angle[channel]);
+    servo_angle[servo] = clamp_angle(new_angle);
+    uint16_t ticks = angle_to_ticks(servo_angle[servo]);
 
     uint16_t on = 0;
     uint16_t off = ticks;
@@ -285,12 +289,13 @@ void move_servo(robot_servo_t servo, robot_move_t move)
 
     // Transmisión I2C al PCA9685
     esp_err_t ret = i2c_master_transmit(dev_handle, canal_servo, 5, pdMS_TO_TICKS(100));
-    if (ret != ESP_OK) {
-        ESP_LOGE(tag, "Fallo al enviar datos al servo %d: %s", channel + 1, esp_err_to_name(ret));
+    if (ret != ESP_OK) 
+    {
+        ESP_LOGE(tag, "Fallo al enviar datos al servo %d: %s", servo + 1, esp_err_to_name(ret));
         return;
     }
 
-    ESP_LOGI(tag, "Servo %d -> ángulo %d°, ticks=%u", channel + 1, servo_angle[channel], ticks);
+    ESP_LOGI(tag, "Servo %d -> ángulo %d°, ticks=%u", servo + 1, servo_angle[servo], ticks);
 }
 
 /* End of file ***************************************************************/
