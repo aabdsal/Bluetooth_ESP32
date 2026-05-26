@@ -66,6 +66,13 @@ extern portMUX_TYPE led_mux;
 void robot_init(void);
 
 /**
+ * @brief Inicializa los servos a parados
+ * @param None
+ * @return None
+ */
+void robot_home(void);
+
+/**
  * @brief Mueve un servo un paso en la direccion solicitada
  * @param servo Identificador del servo
  * @param move Direccion del movimiento

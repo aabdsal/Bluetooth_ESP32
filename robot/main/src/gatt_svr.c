@@ -190,13 +190,24 @@ static int gatt_svc_access(uint16_t conn_handle, uint16_t attr_handle,
             if (move != OK && servo_val != ERROR_SERVO) 
             {
                 move_val = move;
+                vTaskDelay(pdMS_TO_TICKS(10));
+                
                 move_servo(servo_val, move_val);
-                ESP_LOGI(robot, "Movimiento ejecutado: servo %d, movimiento %d", servo_val, move_val);
+                char c = ' ';
+                if (move_val == HORARIO)
+                {
+                    c = 'H';
+                }
+                else if (move_val == ANTIHORARIO)
+                {
+                    c = 'A';
+                }
+                ESP_LOGI(robot, "Movimiento ejecutado: servo %d, movimiento %c", servo_val + 1, c);
             }
             else if (move == OK)
             {
                 servo_val = servo;
-                ESP_LOGI(robot, "Servo seleccionado: %d", servo_val);
+                ESP_LOGI(robot, "Servo seleccionado: %d", servo_val + 1);
             }
             else 
             {
@@ -204,7 +215,7 @@ static int gatt_svc_access(uint16_t conn_handle, uint16_t attr_handle,
                 return BLE_ATT_ERR_UNLIKELY;
             }
 
-            ESP_LOGI(robot, "Mensaje: %s", traducido);
+            ESP_LOGI(robot, "\n");
 
             return 0;
 

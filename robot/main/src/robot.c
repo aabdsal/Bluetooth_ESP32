@@ -35,11 +35,11 @@ static const uint8_t PCA9685_ADDR = 0x40;
 
 #define PCA9685_SERVO_BASE_REG 0x06
 #define PCA9685_PWM_PERIOD_US  20000U
-#define SERVO_MIN_PULSE_US     500U
-#define SERVO_MAX_PULSE_US     2500U
+#define SERVO_MIN_PULSE_US     1000U
+#define SERVO_MAX_PULSE_US     2000U
 #define SERVO_MIN_ANGLE        0U
 #define SERVO_MAX_ANGLE        180U
-#define SERVO_STEP             1U
+#define SERVO_STEP             20U
 #define SERVO_COUNT            6U
 
 // Por problemas con el modulo i2c y los canales de los servos, se asignan manualmente los canales a cada servo
@@ -55,6 +55,7 @@ static const uint8_t PCA9685_ADDR = 0x40;
 /* Private variables ---------------------------------------------------------*/
 
 static uint16_t servo_angle[SERVO_COUNT] = {90, 90, 90, 90, 90, 90};
+//static uint16_t servo_angle_init[SERVO_COUNT] = {90, 90, 90, 90, 90, 90};
 
 static TaskHandle_t led_pool_task_handle = NULL;
 
@@ -242,6 +243,8 @@ void robot_init(void)
         ESP_LOGE(tag, "pca9685_init() fallo: %s", esp_err_to_name(pca_ret));
     }
 
+    robot_home();
+
     ESP_LOGI(tag, "Robot inicializado correctamente");
 
     xTaskCreate(
@@ -264,10 +267,15 @@ void move_servo(robot_servo_t servo, robot_move_t move)
     }
 
     int new_angle = servo_angle[servo];
+
     if (move == HORARIO)
+    {
         new_angle += SERVO_STEP;
+    }
     else if (move == ANTIHORARIO)
+    {
         new_angle -= SERVO_STEP;
+    }
     else 
     {
         ESP_LOGE(tag, "Movimiento no válido");
@@ -287,6 +295,8 @@ void move_servo(robot_servo_t servo, robot_move_t move)
     canal_servo[3] = off & 0xFF;
     canal_servo[4] = (off >> 8) & 0xFF;
 
+    robot_home();
+
     // Transmisión I2C al PCA9685
     esp_err_t ret = i2c_master_transmit(dev_handle, canal_servo, 5, pdMS_TO_TICKS(100));
     if (ret != ESP_OK) 
@@ -296,6 +306,32 @@ void move_servo(robot_servo_t servo, robot_move_t move)
     }
 
     ESP_LOGI(tag, "Servo %d -> ángulo %d°, ticks=%u", servo + 1, servo_angle[servo], ticks);
+}
+
+void robot_home()
+{
+    uint16_t ticks_ini = angle_to_ticks(90);
+
+    for(int idx = 0; idx < 5; idx++)
+    {
+        uint8_t channel_ini = servo_to_channel(idx);
+
+        uint16_t on_ini = 0;
+        uint16_t off_ini = ticks_ini;
+        uint8_t canal_init[5];
+        canal_init[0] = channel_ini; // Canal del servo en el PCA9685
+        canal_init[1] = on_ini & 0xFF;
+        canal_init[2] = (on_ini >> 8) & 0xFF;
+        canal_init[3] = off_ini & 0xFF;
+        canal_init[4] = (off_ini >> 8) & 0xFF;
+
+        esp_err_t ret = i2c_master_transmit(dev_handle, canal_init, 5, pdMS_TO_TICKS(100));
+        if (ret != ESP_OK) 
+        {
+            ESP_LOGE(tag, "Fallo al enviar datos al servo %d: %s", idx + 1, esp_err_to_name(ret));
+            return;
+        }
+    } 
 }
 
 /* End of file ***************************************************************/
