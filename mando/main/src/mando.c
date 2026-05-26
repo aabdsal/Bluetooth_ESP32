@@ -237,23 +237,7 @@ static void mando_task(void *pvParameters)
     for(;;)
     {   
         char msg[16];
-
-        bool is_connected = ble_client_is_connected();
-
-        if (!is_connected)
-        {
-            if (mando_btn_right_read() ||
-                mando_btn_left_read() ||
-                mando_btn_ok_read() ||
-                mando_btn_select_read())
-            {
-                ESP_LOGI(tag, "No puedes usar este boton porque el robot no esta conectado");
-            }
-            vTaskDelay(pdMS_TO_TICKS(500));
-            //gpio_set_level(LED_PIN, 0);
-            continue;  
-        }
-
+        bool boton = mando_btn_right_read() | mando_btn_left_read() | mando_btn_select_read() | mando_btn_ok_read();
 
         if(ble_client_is_connected())
         {
@@ -288,6 +272,10 @@ static void mando_task(void *pvParameters)
                 gpio_set_level(LED_PIN, 0);
                 vTaskDelay(pdMS_TO_TICKS(500));
                 continue;
+        }
+        else if(!ble_client_is_connected() && boton)
+        {
+            ESP_LOGI(tag, "No puedes pulsar ese boton, no estas conectado");
         }
         else
         {

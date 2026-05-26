@@ -41,6 +41,9 @@ static const uint8_t PCA9685_ADDR = 0x40;
 #define SERVO_MAX_ANGLE        180U
 #define SERVO_STEP             20U
 #define SERVO_COUNT            6U
+#define SERVO_NEUTRAL_US 1500
+#define SERVO_RANGE_US   400   // ajuste fino (300–500 típico)
+
 
 // Por problemas con el modulo i2c y los canales de los servos, se asignan manualmente los canales a cada servo
 // Canales de los 6 servos: 0x06, 0x0A, 0x0E, 0x12, 0x16, 0x1A
@@ -54,8 +57,7 @@ static const uint8_t PCA9685_ADDR = 0x40;
 
 /* Private variables ---------------------------------------------------------*/
 
-static uint16_t servo_angle[SERVO_COUNT] = {90, 90, 90, 90, 90, 90};
-//static uint16_t servo_angle_init[SERVO_COUNT] = {90, 90, 90, 90, 90, 90};
+static int16_t servo_velocity[SERVO_COUNT] = {0, 0, 0, 0, 0, 0};
 
 static TaskHandle_t led_pool_task_handle = NULL;
 
@@ -65,9 +67,9 @@ static i2c_master_dev_handle_t dev_handle = NULL;
 /* Private function prototypes ----------------------------------------------*/
 static void led_pool_task(void *arg);
 
-static uint16_t clamp_angle(int angle);
+//static uint16_t clamp_angle(int angle);
 static uint8_t servo_to_channel(robot_servo_t servo);
-static uint16_t angle_to_ticks(uint16_t angle);
+static int16_t velocity_to_ticks(int16_t v);
 
 estado_led_t estado_led = APAGADO;
 portMUX_TYPE led_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -124,7 +126,7 @@ static esp_err_t pca9685_init(void)
  * @param angle Angulo solicitado en grados
  * @return Angulo limitado al intervalo valido del servo
  */
-static uint16_t clamp_angle(int angle)
+/*static uint16_t clamp_angle(int angle)
 {
     if (angle < (int)SERVO_MIN_ANGLE)
     {
@@ -137,7 +139,7 @@ static uint16_t clamp_angle(int angle)
     }
 
     return (uint16_t)angle;
-}
+}*/
 
 /**
  * @brief Convierte un enum de servo del robot al canal asociado del PCA9685
@@ -164,18 +166,23 @@ static uint8_t servo_to_channel(robot_servo_t servo) // Aqui le pasare una varia
 }
 
 /**
- * @brief Convierte un angulo de servo en ticks PWM del PCA9685
- * @param angle Angulo del servo en grados
- * @return Valor de ticks PWM para el angulo objetivo
+ * @brief Convierte una velocidad de servo en ticks PWM del PCA9685
+ * @param angle velocidad del servo
+ * @return Valor de ticks PWM para la velocidad objetivo
  */
-static uint16_t angle_to_ticks(uint16_t angle)
+static int16_t velocity_to_ticks(int16_t v)
 {
-    uint32_t pulse_us = SERVO_MIN_PULSE_US;
-
-    pulse_us += ((uint32_t)angle * (SERVO_MAX_PULSE_US - SERVO_MIN_PULSE_US)) /
-                SERVO_MAX_ANGLE;
-
-    return (uint16_t)((pulse_us * 4096U) / PCA9685_PWM_PERIOD_US);
+    if (v > 100) 
+    {
+        v = 100;    
+    }
+    if (v < -100) 
+    {
+        v = -100;   
+    }
+    
+    int pulse = SERVO_NEUTRAL_US + (v * SERVO_RANGE_US) / 100;    
+    return (pulse * 4096) / 20000;  
 }
 
 static void led_pool_task(void *arg)
@@ -266,15 +273,15 @@ void move_servo(robot_servo_t servo, robot_move_t move)
         return;
     }
 
-    int new_angle = servo_angle[servo];
+    int new_velocity = servo_velocity[servo];
 
     if (move == HORARIO)
     {
-        new_angle += SERVO_STEP;
+        new_velocity += SERVO_STEP;
     }
     else if (move == ANTIHORARIO)
     {
-        new_angle -= SERVO_STEP;
+        new_velocity -= SERVO_STEP;
     }
     else 
     {
@@ -282,8 +289,9 @@ void move_servo(robot_servo_t servo, robot_move_t move)
         return;
     }
 
-    servo_angle[servo] = clamp_angle(new_angle);
-    uint16_t ticks = angle_to_ticks(servo_angle[servo]);
+    // servo_velocity[servo] = clamp_angle(new_velocity); -> Recuerdos de Vietnam
+    servo_velocity[servo] = new_velocity;
+    int16_t ticks = velocity_to_ticks(servo_velocity[servo]);
 
     uint16_t on = 0;
     uint16_t off = ticks;
@@ -305,12 +313,12 @@ void move_servo(robot_servo_t servo, robot_move_t move)
         return;
     }
 
-    ESP_LOGI(tag, "Servo %d -> ángulo %d°, ticks=%u", servo + 1, servo_angle[servo], ticks);
+    ESP_LOGI(tag, "Servo %d -> velocidad: %d°, ticks = %u", servo + 1, servo_velocity[servo], ticks);
 }
 
 void robot_home()
 {
-    uint16_t ticks_ini = angle_to_ticks(90);
+    int16_t ticks_ini = velocity_to_ticks(0);
 
     for(int idx = 0; idx < 5; idx++)
     {
@@ -318,6 +326,7 @@ void robot_home()
 
         uint16_t on_ini = 0;
         uint16_t off_ini = ticks_ini;
+
         uint8_t canal_init[5];
         canal_init[0] = channel_ini; // Canal del servo en el PCA9685
         canal_init[1] = on_ini & 0xFF;

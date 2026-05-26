@@ -69,16 +69,13 @@ static int handle_robot_message(const char *msg, uint16_t len, robot_servo_t *se
     char mov_char;
     if (sscanf(msg, "S%d,A:%c", &servo_num, &mov_char) == 2) 
     {
-        if (servo_num >= 1 && servo_num <= 6) 
-        {
-            *servo = (robot_servo_t)(servo_num - 1); // Porque en nuestro enum SERVO1=0, SERVO2=1, etc.
-            ESP_LOGI(robot, "Servo seleccionado: %d", *servo);
-        } else 
+        if (servo_num < 1 || servo_num > 6) 
         {
             ESP_LOGE(gatt, "Número de servo inválido: %d", servo_num);
             return -1;
         }
-
+        *servo = (robot_servo_t)(servo_num - 1); // Porque en nuestro enum SERVO1=0, SERVO2=1, etc.
+        
         switch (mov_char)
         {
             case 'H':
@@ -97,7 +94,8 @@ static int handle_robot_message(const char *msg, uint16_t len, robot_servo_t *se
                 ESP_LOGE(gatt, "Movimiento no reconocido: %c", mov_char);
                 return -1;
         }
-    } else 
+    } 
+    else 
     {
         ESP_LOGE(gatt, "Formato de mensaje incorrecto: %s", msg);
         return -1;
@@ -202,7 +200,7 @@ static int gatt_svc_access(uint16_t conn_handle, uint16_t attr_handle,
                 {
                     c = 'A';
                 }
-                ESP_LOGI(robot, "Movimiento ejecutado: servo %d, movimiento %c", servo_val + 1, c);
+                ESP_LOGI(robot, "Movimiento ejecutado: servo %d, movimiento %c\n", servo_val + 1, c);
             }
             else if (move == OK)
             {
@@ -214,8 +212,6 @@ static int gatt_svc_access(uint16_t conn_handle, uint16_t attr_handle,
                 ESP_LOGE(gatt, "Servo no seleccionado aun");
                 return BLE_ATT_ERR_UNLIKELY;
             }
-
-            ESP_LOGI(robot, "\n");
 
             return 0;
 
