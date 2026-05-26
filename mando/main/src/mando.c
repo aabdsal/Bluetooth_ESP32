@@ -75,7 +75,8 @@ void mando_init(void)
         .pin_bit_mask = (1ULL << BTN_SELECT) | // Configura TODOS estos pines con esta misma configuración 
                         (1ULL << BTN_OK) |
                         (1ULL << BTN_RIGHT) |
-                        (1ULL << BTN_LEFT),
+                        (1ULL << BTN_LEFT) | 
+                        (1ULL << SW_BLE_EN), // Enable BLE
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -86,22 +87,6 @@ void mando_init(void)
     if (ret != ESP_OK) 
     {
         ESP_LOGE(tag, "gpio_config (botones) fallo en mando_init: %s (%d)", esp_err_to_name(ret), ret);
-        return;
-    }
-
-    gpio_config_t io_conf_sw = 
-    {
-        .pin_bit_mask = (1ULL << SW_BLE_EN),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_ANYEDGE // any edge interrupt for switch
-    };
-
-    ret = gpio_config(&io_conf_sw);
-    if (ret != ESP_OK) 
-    {
-        ESP_LOGE(tag, "gpio_config (switch BLE) fallo en mando_init: %s (%d)", esp_err_to_name(ret), ret);
         return;
     }
 
@@ -253,13 +238,22 @@ static void mando_task(void *pvParameters)
     {   
         char msg[16];
 
-        /*if((mando_btn_right_read() || mando_btn_left_read() || mando_btn_ok_read() || mando_btn_select_read()) && (!ble_client_is_connected()))
+        bool is_connected = ble_client_is_connected();
+
+        if (!is_connected)
         {
-            ESP_LOGI(tag, "No puedes usar este boton porque el robot no esta conectado");
-            ESP_LOGI(tag, "Pulsa el interruptor para iniciar el escaneo ble...\n");
+            if (mando_btn_right_read() ||
+                mando_btn_left_read() ||
+                mando_btn_ok_read() ||
+                mando_btn_select_read())
+            {
+                ESP_LOGI(tag, "No puedes usar este boton porque el robot no esta conectado");
+            }
             vTaskDelay(pdMS_TO_TICKS(500));
-            continue;
-        }*/
+            //gpio_set_level(LED_PIN, 0);
+            continue;  
+        }
+
 
         if(ble_client_is_connected())
         {

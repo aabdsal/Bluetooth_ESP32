@@ -26,8 +26,8 @@
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
 
-bool scanning = false;
-bool connected = false;
+static volatile bool scanning = false;
+static volatile bool connected = false;
 
 static const char *TAG = "[BLE_CLIENT]";
 static char name_device[32] = "";
@@ -276,11 +276,10 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         }
         case BLE_GAP_EVENT_DISCONNECT:
         {
-            ESP_LOGI(TAG, "Desconectado del robot, reintentando...");
+            ESP_LOGI(TAG, "Desconectado del robot");
             ble_client_set_connection(false);
             conn_handle = 0;
             char_handle = 0;
-            ble_app_on_sync();
             return 0;
         }
 
