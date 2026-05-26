@@ -70,8 +70,8 @@ static int s_scl = -1;
 static uint8_t s_dev_addr = 0;
 static const uint8_t lcd_addr = 0x27;
 
-static const uint8_t SDA_pin = 8;
-static const uint8_t SCL_pin = 9;
+static const uint8_t SDA_pin = 42;
+static const uint8_t SCL_pin = 41;
 
 //static const uint8_t lcd_cols = 16;
 static const uint8_t lcd_rows = 2;
